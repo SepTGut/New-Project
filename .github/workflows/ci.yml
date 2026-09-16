@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - beta
+      - alpha
   pull_request:
     branches:
       - main
       - beta
+      - alpha
 
 jobs:
   build-web:
