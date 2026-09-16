@@ -61,7 +61,10 @@ All notable changes and architectural transitions are documented in this file.
 - **Progressive Web App (PWA) & Offline Resilience (`web/`)**:
   - Created `manifest.json` and `icon.svg` enabling "Add to Home Screen" on mobile devices.
   - Configured 3-tier inventory fetch strategy (Live GAS JSON -> Published CSV -> Local Storage Cache) with real-time offline connection status badge.
+- **Streamlined Inventory Cards**:
+  - Configured [ItemCard.vue](file:///d:/MyCode/New-Project/web/src/components/ItemCard.vue) and `app.py` to display strictly **one single main photo of the whole item** (`Foto 1`) with safe fallback, eliminating duplicate side-by-side images from cluttering the search view.
 - **Build Verification**:
-  - Verified `npm run build` inside `web/` with 0 errors (built in 1.41s).
+  - Verified `npm run build` inside `web/` with 0 errors (built in 1.42s).
+
 
 
