@@ -51,7 +51,8 @@ All notable changes and architectural transitions are documented in this file.
 - **Google Apps Script Live Sync & User Auth (`GAS/`)**:
   - `SheetService.js`: Implemented `getAllItems()` for 0-second live inventory read directly from the spreadsheet. Added `getUsersSheet()` and `verifyUser()` to support accounts managed directly in a `"Users"` sheet tab.
   - `Controller.js`: Added `doGet?action=inventory` endpoint returning real-time JSON with execution time metrics and added `doPost` action `'login'` for remote credential verification.
-  - Deployed to Google Apps Script via `clasp push` (7 files synced).
+  - `Config.js`: Migrated hardcoded IDs to native Google Apps Script environment variables (`PropertiesService.getScriptProperties()`) with dynamic getters and fallback support. Added `initializeScriptProperties()` helper.
+  - Deployed to Google Apps Script via `sync_and_deploy.ps1` (Version 10 is now live).
 - **Integrated Camera Barcode & QR Code Scanner (`web/`)**:
   - Installed `html5-qrcode` and built `BarcodeScannerModal.vue` with rear camera priority, audio/vibration detection feedback, and dark backdrop overlay.
   - Wired scanner to search bar for instant inventory lookup and to `AddItemForm.vue` for 1-click material code intake.
