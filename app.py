@@ -795,17 +795,25 @@ with tab_cari:
                         col_action = None
 
                     with col_foto:
-                        imgs = []
+                        # Prioritaskan Foto 1 (foto barang utuh)
+                        main_photo_url = None
                         for p_col in photo_cols:
-                            drive_url = str(row.get(p_col, "")).strip()
-                            if drive_url:
-                                img = load_image_from_url(drive_url)
-                                if img:
-                                    imgs.append(img)
+                            if "1" in p_col.lower():
+                                url_val = str(row.get(p_col, "")).strip()
+                                if url_val:
+                                    main_photo_url = url_val
+                                    break
 
-                        if imgs:
-                            for img in imgs:
-                                st.image(img)
+                        if not main_photo_url:
+                            for p_col in photo_cols:
+                                url_val = str(row.get(p_col, "")).strip()
+                                if url_val:
+                                    main_photo_url = url_val
+                                    break
+
+                        img = load_image_from_url(main_photo_url) if main_photo_url else None
+                        if img:
+                            st.image(img)
                         else:
                             st.markdown(
                                 '<div class="photo-placeholder">Tanpa Foto</div>',

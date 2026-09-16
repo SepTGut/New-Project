@@ -1,16 +1,14 @@
 <template>
   <div class="item-card">
-    <!-- Photos Column -->
+    <!-- Photo Column: Single main photo of the whole item -->
     <div class="card-photos">
-      <div v-if="photoUrls.length > 0">
+      <div v-if="mainPhotoUrl">
         <img
-          v-for="(url, idx) in photoUrls"
-          :key="idx"
-          :src="url"
+          :src="mainPhotoUrl"
           class="card-img"
           alt="Foto Barang"
           loading="lazy"
-          @error="handleImgError(idx)"
+          @error="handleImgError"
         />
       </div>
       <div v-else class="photo-placeholder">
@@ -166,21 +164,27 @@ const qty = computed(() => getVal(['qty', 'jumlah']) || '0');
 const uom = computed(() => getVal(['uom', 'satuan']) || '');
 const deskripsi = computed(() => getVal(['deskripsi', 'keterangan']));
 
-const photoUrls = computed(() => {
-  const urls = [];
+const mainPhotoUrl = computed(() => {
+  // 1. Prioritize Foto 1 (the main photo of the whole item)
+  const f1Val = getVal(['foto 1', 'foto1', 'link foto 1', 'link1', 'foto']);
+  if (f1Val) {
+    const direct = getDirectDriveUrl(f1Val);
+    if (direct) return direct;
+  }
+
+  // 2. Fallback to any available photo if Foto 1 is missing
   for (const [k, v] of Object.entries(props.item)) {
     const cleanK = k.toLowerCase();
-    if (['link', 'foto', 'drive', 'url'].some((kw) => cleanK.includes(kw))) {
+    if (['foto', 'link', 'drive', 'url'].some((kw) => cleanK.includes(kw))) {
       const driveUrl = String(v || '').trim();
       if (driveUrl) {
         const direct = getDirectDriveUrl(driveUrl);
-        if (direct && !urls.includes(direct)) {
-          urls.push(direct);
-        }
+        if (direct) return direct;
       }
     }
   }
-  return urls;
+
+  return '';
 });
 
 const extraColumns = computed(() => {
