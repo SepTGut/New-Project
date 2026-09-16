@@ -1,0 +1,17 @@
+{
+  "name": "Stock Opname - Warehouse Inventory",
+  "short_name": "Stock Opname",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#3e3863",
+  "theme_color": "#784b92",
+  "description": "Aplikasi Stock Opname dan Manajemen Inventaris Gudang",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

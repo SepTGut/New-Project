@@ -1,0 +1,23 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Streamlit Secrets
+.streamlit/secrets.toml
+
+# Clasp Credentials
+.clasprc.json
+
+# Environment Variables
+.env
+
+# Node & Build artifacts
+node_modules/
+dist/
+.DS_Store
+

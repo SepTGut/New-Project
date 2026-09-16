@@ -1,0 +1,79 @@
+name: CI / CD Workflow
+
+on:
+  push:
+    branches:
+      - main
+      - bete
+  pull_request:
+    branches:
+      - main
+      - bete
+
+jobs:
+  build-web:
+    name: Build & Validate Web Application
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package.json
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Production Bundle
+        run: npm run build
+
+  validate-gas:
+    name: Validate Google Apps Script Code
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./GAS
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax Check JavaScript Files
+        run: |
+          node -c Config.js
+          node -c Auth.js
+          node -c DriveService.js
+          node -c SheetService.js
+          node -c Controller.js
+
+  build-docker:
+    name: Build Docker Container Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Web Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: false
+          tags: stock-opname-web:latest

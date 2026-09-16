@@ -1,0 +1,11 @@
+services:
+  stock-opname-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: stock_opname_app
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      - NODE_ENV=production
