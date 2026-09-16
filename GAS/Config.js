@@ -5,8 +5,16 @@
 
 function getEnv(key, fallback) {
   try {
-    const val = PropertiesService.getScriptProperties().getProperty(key);
-    return (val !== null && val !== undefined && val !== '') ? val : (fallback || '');
+    const props = PropertiesService.getScriptProperties();
+    let val = props.getProperty(key);
+    if (val !== null && val !== undefined && val !== '') {
+      return val;
+    }
+    // Auto-seed into native Script Properties if not yet set
+    if (fallback) {
+      props.setProperty(key, String(fallback));
+    }
+    return fallback || '';
   } catch (err) {
     return fallback || '';
   }
