@@ -30,8 +30,6 @@ A warehouse inventory tracking and stock opname platform integrating Google Shee
 │   ├── Dockerfile          # Production multi-stage container build
 │   └── nginx.conf          # Nginx SPA router & asset cache
 ├── docker-compose.yml      # Container orchestration
-├── app.py                  # Python Streamlit application (Legacy / Baseline)
-├── requirements.txt        # Python dependencies
 └── .env                    # Local environment variables
 ```
 
@@ -68,11 +66,5 @@ Or manually:
 clasp push
 clasp version "Version Description"
 clasp deploy -i AKfycbxCEJ02WRuoQ3Ja-IMlc28DzUx6DoNLHTnTWty1SSVQyTkCvgZoUksylTPbTd-sOeHl -V <version_number>
-```
-
-### 4. Running Python Streamlit (Legacy Baseline)
-```powershell
-pip install -r requirements.txt
-streamlit run app.py
 ```
 
