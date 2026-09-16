@@ -166,7 +166,7 @@ const deskripsi = computed(() => getVal(['deskripsi', 'keterangan']));
 
 const mainPhotoUrl = computed(() => {
   // 1. Prioritize Foto 1 (the main photo of the whole item)
-  const f1Val = getVal(['foto 1', 'foto1', 'link foto 1', 'link1', 'foto']);
+  const f1Val = getVal(['link foto', 'link foto 1', 'foto 1', 'foto1', 'foto', 'link1', 'link']);
   if (f1Val) {
     const direct = getDirectDriveUrl(f1Val);
     if (direct) return direct;
@@ -188,7 +188,7 @@ const mainPhotoUrl = computed(() => {
 });
 
 const extraColumns = computed(() => {
-  const exclude = ['lokasi rak', 'lokasi', 'rak', 'kode material', 'kode', 'nama barang', 'nama', 'qty', 'uom', 'satuan', 'deskripsi', 'link', 'foto', 'drive', 'url'];
+  const exclude = ['no', 'nomor', 'number', '#', 'lokasi rak', 'lokasi', 'rak', 'kode material', 'kode', 'nama barang', 'nama', 'qty', 'uom', 'satuan', 'deskripsi', 'link', 'foto', 'drive', 'url'];
   const res = {};
   for (const [k, v] of Object.entries(props.item)) {
     const cleanK = k.toLowerCase().trim();

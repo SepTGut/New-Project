@@ -1,13 +1,29 @@
 import Papa from 'papaparse';
 
 const DATABASE_URL = import.meta.env.VITE_DATABASE_URL ||
-  'https://docs.google.com/spreadsheets/d/e/2PACX-1vTcS0mSoo1HwqTihRlqwwhyxJSpVMW4WH15XM_rx2yLGfXCjbOn-SbEetgs5vRn8OWEFqO_ov-BgMwP/pub?output=csv';
+  'https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/export?format=csv&gid=1367299058';
 
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL ||
-  'https://script.google.com/macros/s/AKfycbxCEJ02WRuoQ3Ja-IMlc28DzUx6DoNLHTnTWty1SSVQyTkCvgZoUksylTPbTd-sOeHl/exec';
+  'https://script.google.com/macros/s/AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7/exec';
 
 const API_KEY = import.meta.env.VITE_API_KEY || '';
 const OFFLINE_CACHE_KEY = 'cached_stock_inventory';
+
+/**
+ * Strips top title/empty rows from Google Sheets CSV exports so Papa.parse finds the true header row
+ */
+function prepareCsvText(csvText) {
+  if (!csvText) return '';
+  const lines = csvText.split(/\r?\n/);
+  const headerIdx = lines.findIndex((line) => {
+    const l = line.toLowerCase();
+    return l.includes('kode material') || l.includes('nama barang') || l.includes('lokasi rak');
+  });
+  if (headerIdx !== -1) {
+    return lines.slice(headerIdx).join('\n');
+  }
+  return csvText;
+}
 
 /**
  * Fetches latest inventory.
@@ -39,8 +55,9 @@ export async function fetchInventory() {
     const csvResp = await fetch(csvUrl);
     if (csvResp.ok) {
       const csvText = await csvResp.text();
+      const cleanCsv = prepareCsvText(csvText);
       return new Promise((resolve) => {
-        Papa.parse(csvText, {
+        Papa.parse(cleanCsv, {
           header: true,
           skipEmptyLines: true,
           complete: (results) => {

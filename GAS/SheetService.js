@@ -13,7 +13,45 @@ const SheetService = {
   },
 
   /**
-   * Dynamically inspects row 1 and maps logical column keys to 1-based column indices.
+   * Scans rows 1 to 15 to dynamically locate the true header row
+   * (e.g. Row 5 in sheets with a top title banner like "Stock Opname Gudang").
+   */
+  findHeaderRow: function(sheet) {
+    const lastRow = Math.min(sheet.getLastRow(), 15);
+    const lastCol = sheet.getLastColumn();
+    if (lastRow < 1 || lastCol < 1) return 1;
+
+    const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    let bestRow = 1;
+    let maxMatches = 0;
+
+    for (let r = 0; r < data.length; r++) {
+      let matches = 0;
+      const rowVals = data[r].map(function(v) {
+        return String(v || '').toLowerCase().replace(/[\s\-_]+/g, '');
+      });
+
+      for (const kwList of Object.values(CONFIG.COLUMNS)) {
+        for (const kw of kwList) {
+          const normKw = kw.toLowerCase().replace(/[\s\-_]+/g, '');
+          if (rowVals.includes(normKw)) {
+            matches++;
+            break;
+          }
+        }
+      }
+
+      if (matches > maxMatches) {
+        maxMatches = matches;
+        bestRow = r + 1; // 1-based row index
+      }
+    }
+
+    return bestRow;
+  },
+
+  /**
+   * Dynamically inspects the header row and maps logical column keys to 1-based column indices.
    */
   getColumnMap: function(sheet) {
     const lastCol = sheet.getLastColumn();
@@ -21,7 +59,8 @@ const SheetService = {
       throw new Error('Sheet kosong atau tidak memiliki baris header.');
     }
 
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const headerRow = this.findHeaderRow(sheet);
+    const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
     const map = {};
 
     function normalize(str) {
@@ -47,24 +86,27 @@ const SheetService = {
 
     return {
       map: map,
-      totalCols: lastCol
+      totalCols: lastCol,
+      headerRow: headerRow
     };
   },
 
   /**
-   * Optimized lookup scanning ONLY the Material Code column range.
+   * Optimized lookup scanning ONLY the Material Code column range below header row.
    */
   findRowByMaterialCode: function(sheet, colIndex, materialCode) {
     if (!materialCode || colIndex < 1) return -1;
+    const headerRow = this.findHeaderRow(sheet);
     const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return -1;
+    if (lastRow <= headerRow) return -1;
 
     const target = String(materialCode).trim().toLowerCase();
-    const values = sheet.getRange(2, colIndex, lastRow - 1, 1).getValues();
+    const numRows = lastRow - headerRow;
+    const values = sheet.getRange(headerRow + 1, colIndex, numRows, 1).getValues();
 
     for (let i = 0; i < values.length; i++) {
       if (String(values[i][0]).trim().toLowerCase() === target) {
-        return i + 2; // 1-based row index in sheet
+        return headerRow + 1 + i; // 1-based row index in sheet
       }
     }
     return -1;
@@ -97,13 +139,21 @@ const SheetService = {
         }
       }
 
+      // Auto-compute next sequence number if sheet has 'No' column
+      if (colMap['NO'] && colMap['NO'] > 0) {
+        const currentLastRow = sheet.getLastRow();
+        const nextNo = Math.max(1, currentLastRow - colInfo.headerRow + 1);
+        setCol('NO', nextNo);
+      }
+
       setCol('LOKASI_RAK', formData.lokasiRak);
       setCol('KODE_MATERIAL', formData.kodeMaterial);
       setCol('NAMA_BARANG', formData.namaBarang);
       setCol('QTY', formData.qty);
       setCol('UOM', formData.uom);
       setCol('DESKRIPSI', formData.deskripsi);
-      setCol('FOTO1', link1);
+      // For sheets with single photo column, link1 or linkGabungan will be stored
+      setCol('FOTO1', link1 || linkGabungan);
       setCol('FOTO2', link2);
       setCol('FOTO_GABUNGAN', linkGabungan);
 
@@ -186,7 +236,7 @@ const SheetService = {
       updateCol('QTY', data.qty);
       updateCol('UOM', data.uom);
       updateCol('DESKRIPSI', data.deskripsi);
-      updateCol('FOTO1', link1);
+      updateCol('FOTO1', link1 || linkGabungan);
       updateCol('FOTO2', link2);
       updateCol('FOTO_GABUNGAN', linkGabungan);
 
@@ -213,11 +263,14 @@ const SheetService = {
     const lastRow = sheet.getLastRow();
     const lastCol = sheet.getLastColumn();
 
-    if (lastRow < 2 || lastCol < 1) {
+    const headerRow = this.findHeaderRow(sheet);
+
+    if (lastRow <= headerRow || lastCol < 1) {
       return [];
     }
 
-    const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    const numRows = lastRow - headerRow + 1;
+    const data = sheet.getRange(headerRow, 1, numRows, lastCol).getValues();
     const headers = data[0].map(function(h) { return String(h || '').trim(); });
     const items = [];
 
@@ -245,14 +298,18 @@ const SheetService = {
   },
 
   /**
-   * Connects to or auto-initializes the "Users" sheet
+   * Connects to or auto-initializes the "User" (or "Users") sheet
    */
   getUsersSheet: function() {
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    let userSheet = ss.getSheetByName(CONFIG.USER_SHEET_NAME);
+    let userSheet = ss.getSheetByName(CONFIG.USER_SHEET_NAME) || ss.getSheetByName('Users');
 
     if (!userSheet) {
       userSheet = ss.insertSheet(CONFIG.USER_SHEET_NAME);
+    }
+
+    // Auto-seed headers and default credentials if sheet is empty
+    if (userSheet.getLastRow() === 0) {
       userSheet.appendRow(['Username', 'PasswordHash', 'Role', 'Status', 'CreatedAt']);
       userSheet.appendRow(['admin', CONFIG.DEFAULT_ADMIN_HASH, 'admin', 'Active', new Date().toISOString()]);
       userSheet.appendRow(['staff', CONFIG.DEFAULT_STAFF_HASH, 'staff', 'Active', new Date().toISOString()]);
@@ -263,7 +320,7 @@ const SheetService = {
   },
 
   /**
-   * Verifies user credentials against the "Users" sheet
+   * Verifies user credentials against the "User" sheet
    */
   verifyUser: function(username, passwordHash) {
     if (!username || !passwordHash) {

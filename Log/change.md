@@ -68,6 +68,26 @@ All notable changes and architectural transitions are documented in this file.
 - **Build Verification**:
   - Verified `npm run build` inside `web/` with 0 errors (built in 1.42s).
 
+---
+
+## [Migration to New Spreadsheet & Apps Script Project] - 2026-09-16
+### Completed
+- **Spreadsheet Migration**:
+  - Migrated target to new Google Spreadsheet ID `1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c`.
+  - Added **Dynamic Header Row Detection (`findHeaderRow`)** to `GAS/SheetService.js` and CSV parser in `web/src/services/api.js` to seamlessly support the title banner layout where headers reside on **Row 5** (`PictFinder` tab GID `1367299058`).
+  - Added auto-initialization for the **`User`** tab (GID `1894615367`): injects `Username`, `PasswordHash`, `Role`, `Status`, `CreatedAt` headers and default `admin` and `staff` accounts when empty.
+  - Added support for sequence numbering (`No` column) and single photo link column (`Link Foto`).
+- **Google Apps Script Backend**:
+  - Connected clasp to new Script ID `1NZBn5MFU0NMl3fshjMTwaqL7OcbVRJ7tWZiXZSP-7a_OWQak8cN0wWS4`.
+  - Pushed all 7 backend modules (`appsscript.json`, `Auth.js`, `Config.js`, `Controller.js`, `DriveService.js`, `index.html`, `SheetService.js`).
+  - Created new Web App deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (Version 2).
+  - Updated `GAS/sync_and_deploy.ps1` with the new deployment ID.
+- **Frontend & Environment Configuration**:
+  - Updated `.env`, `web/.env.example`, and `web/src/services/api.js` with the new CSV export and Web App `/exec` URLs.
+  - Updated `web/src/components/ItemCard.vue` to map single `Link Foto` directly to product card images and filter `#`, `No`, `Nomor` from extra properties.
+  - Built web production bundle (`npm run build` completed cleanly in 1.43s).
+
+
 
 
 

@@ -14,7 +14,7 @@ function getEnv(key, fallback) {
 
 const CONFIG = {
   get SPREADSHEET_ID() {
-    return getEnv('SPREADSHEET_ID', '1SyeWtAjKAFyDs8oDVxKhiQluF45JjB_Se79PjmfrQxQ');
+    return getEnv('SPREADSHEET_ID', '1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c');
   },
   get SHEET_NAME() {
     return getEnv('SHEET_NAME', 'PictFinder');
@@ -29,7 +29,7 @@ const CONFIG = {
     return parseInt(getEnv('LOCK_TIMEOUT_MS', '30000'), 10) || 30000;
   },
   get USER_SHEET_NAME() {
-    return getEnv('USER_SHEET_NAME', 'Users');
+    return getEnv('USER_SHEET_NAME', 'User');
   },
   get DEFAULT_ADMIN_HASH() {
     return getEnv('DEFAULT_ADMIN_HASH', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9');
@@ -40,13 +40,14 @@ const CONFIG = {
 
   // Keywords used to dynamically detect column positions from sheet header row
   COLUMNS: {
-    LOKASI_RAK: ['lokasi rak', 'lokasi', 'rak'],
-    KODE_MATERIAL: ['kode material', 'kode', 'material code'],
-    NAMA_BARANG: ['nama barang', 'nama', 'item name'],
-    QTY: ['qty', 'quantity', 'jumlah'],
+    NO: ['no', 'nomor', 'number', '#'],
+    LOKASI_RAK: ['lokasi rak', 'lokasi', 'rak', 'bin'],
+    KODE_MATERIAL: ['kode material', 'kode', 'material code', 'part number', 'part no'],
+    NAMA_BARANG: ['nama barang', 'nama', 'item name', 'description of goods', 'item'],
+    QTY: ['qty', 'quantity', 'jumlah', 'stok'],
     UOM: ['uom', 'satuan', 'unit'],
-    DESKRIPSI: ['deskripsi', 'description', 'keterangan'],
-    FOTO1: ['foto 1', 'foto1', 'link foto 1', 'link1'],
+    DESKRIPSI: ['deskripsi', 'description', 'keterangan', 'spesifikasi'],
+    FOTO1: ['link foto', 'foto', 'link foto 1', 'foto 1', 'foto1', 'link1', 'gambar'],
     FOTO2: ['foto 2', 'foto2', 'link foto 2', 'link2'],
     FOTO_GABUNGAN: ['foto gabungan', 'fotogabungan', 'link gabungan', 'gabungan']
   }
@@ -59,10 +60,10 @@ const CONFIG = {
 function initializeScriptProperties() {
   const props = PropertiesService.getScriptProperties();
   props.setProperties({
-    SPREADSHEET_ID: '1SyeWtAjKAFyDs8oDVxKhiQluF45JjB_Se79PjmfrQxQ',
+    SPREADSHEET_ID: '1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c',
     SHEET_NAME: 'PictFinder',
     DRIVE_FOLDER_ID: '1UoMPOvUXmj2Ao9AWSE1f4-eQ7WgrTkZz',
-    USER_SHEET_NAME: 'Users',
+    USER_SHEET_NAME: 'User',
     API_KEY: '',
     LOCK_TIMEOUT_MS: '30000',
     DEFAULT_ADMIN_HASH: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
