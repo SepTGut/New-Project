@@ -64,9 +64,10 @@ All notable changes and architectural transitions are documented in this file.
 - **Streamlined Inventory Cards**:
   - Configured [ItemCard.vue](file:///d:/MyCode/New-Project/web/src/components/ItemCard.vue) and `app.py` to display strictly **one single main photo of the whole item** (`Foto 1`) with safe fallback, eliminating duplicate side-by-side images from cluttering the search view.
 - **Deprecated & Removed Legacy Streamlit Prototype**:
-  - Deleted `app.py` as the system is now fully powered by the modern Vue 3 + Vite containerized web application.
+  - Deleted `app.py`, `requirements.txt`, and `.streamlit/` folder as the system is now 100% powered by the modern Vue 3 + Vite containerized web application.
 - **Build Verification**:
   - Verified `npm run build` inside `web/` with 0 errors (built in 1.42s).
+
 
 
 
