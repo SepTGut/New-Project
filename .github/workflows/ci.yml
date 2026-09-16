@@ -4,11 +4,11 @@ on:
   push:
     branches:
       - main
-      - bete
+      - beta
   pull_request:
     branches:
       - main
-      - bete
+      - beta
 
 jobs:
   build-web:
