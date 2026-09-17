@@ -215,6 +215,17 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 10 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@10).
 
+---
+
+## [GAS v2.7: Hotfix Syntax Error in PrintCardModal.html] - 2026-09-17
+### Fixed
+- Removed accidental `[diff_block_end]` token and restored properly closed callback block in `PrintCardModal.html`.
+- Verified 100% clean Node.js syntax parsing on all scripts and client-side modal code.
+- **Deployment**:
+  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 11 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@11).
+
+
 
 
 

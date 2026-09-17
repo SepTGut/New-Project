@@ -550,7 +550,7 @@
             }
             onGroupRangeInput();
           }
-        })[diff_block_end]
+        })
         .withFailureHandler(function(err) {
           console.error('getPrintModalInitialData error:', err);
           document.getElementById('printSummaryBadge').textContent = 'Siap dicetak';
