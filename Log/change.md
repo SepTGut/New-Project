@@ -138,6 +138,27 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed all 9 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 6 and redeployed active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@6).
 
+---
+
+## [GAS v2.3: Official REKA INKA Group Logo Integration] - 2026-09-17
+### Completed
+- **Replaced School Logo with Company Logo**:
+  - Identified that the previous logo ID (`1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT`) was the SMKN 1 Madiun school emblem from `About.gs`.
+  - Replaced it with the official **PT REKAINDO GLOBAL JASA (REKA INKA Group)** company logo from `KPMscript` (`ptrekaindo.co.id/wp-content/uploads/2024/07/logo-fix-1.png`).
+- **Logo Delivery Engine (`GAS/LogoUri.js` & `GAS/PrintCardService.js`)**:
+  - Built `LogoUri.js` with a high-resolution, lightweight 30KB optimized Base64 data URI for instant rendering.
+  - Implemented 3-layer logo hierarchy:
+    1. Checks if an image is pasted directly on the `Tcard` tab via `tcardSheet.getImages()`.
+    2. Uses the official REKA INKA Group vector/bitmap logo (`REKAINDO_LOGO_DATA_URI`).
+    3. Fallback to Google Drive `LOGO_ID`.
+- **Layout & Dimension Polish**:
+  - Widened logo containers in `PrintCardModal.html` (32mm single card, 46mm group card) and `PrintUserQR.html` (32mm badge) to preserve the 3:1 logo aspect ratio cleanly.
+  - Updated fallback brand text from `LOGOKPM` to `REKA INKA`.
+- **Deployment**:
+  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 7 and redeployed active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@7).
+
+
 
 
 
