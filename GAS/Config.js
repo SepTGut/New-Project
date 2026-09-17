@@ -6,17 +6,16 @@
 function getEnv(key, fallback) {
   try {
     const props = PropertiesService.getScriptProperties();
-    let val = props.getProperty(key);
-    if (val !== null && val !== undefined && val !== '') {
-      return val;
+    if (props) {
+      const val = props.getProperty(key);
+      if (val !== null && val !== undefined && val !== '') {
+        return val;
+      }
     }
-    if (fallback) {
-      props.setProperty(key, String(fallback));
-    }
-    return fallback || '';
   } catch (err) {
-    return fallback || '';
+    // Silently fall back if running in restricted context (e.g. simple trigger)
   }
+  return fallback || '';
 }
 
 const CONFIG = {
@@ -27,7 +26,7 @@ const CONFIG = {
     return getEnv('DRIVE_FOLDER_ID', '1UoMPOvUXmj2Ao9AWSE1f4-eQ7WgrTkZz');
   },
   get LOGO_ID() {
-    return getEnv('LOGO_ID', '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT');
+    return getEnv('LOGO_ID', '');
   },
   get SHEET_PICTFINDER() {
     return getEnv('SHEET_PICTFINDER', 'PictFinder');
@@ -67,7 +66,7 @@ function initializeScriptProperties() {
   props.setProperties({
     SPREADSHEET_ID: '1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c',
     DRIVE_FOLDER_ID: '1UoMPOvUXmj2Ao9AWSE1f4-eQ7WgrTkZz',
-    LOGO_ID: '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT',
+    LOGO_ID: '',
     SHEET_PICTFINDER: 'PictFinder',
     SHEET_USER: 'User',
     SHEET_TCARD: 'Tcard'

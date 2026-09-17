@@ -1,6 +1,6 @@
 /**
  * Warehouse System Master Controller (Code.js)
- * Builds custom menus, dialog windows, and client RPC bridges.
+ * Builds custom menus, dialog windows, client RPC bridges, and Web App endpoints.
  */
 
 function onOpen() {
@@ -52,6 +52,48 @@ function setupUsersSheetWrapper() {
 }
 
 // ==============================================================================
+// Web App REST Endpoints (doGet / doPost) for Remote Diagnostics & Sync
+// ==============================================================================
+
+function doGet(e) {
+  try {
+    const action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action).toLowerCase() : 'sync';
+
+    if (action === 'ping') {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        status: 'online',
+        spreadsheetId: CONFIG.SPREADSHEET_ID,
+        timestamp: new Date().toISOString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Default action: Run full system sync, repair headers, numbering, and user formulas
+    fixFormat();
+    syncNoAndLinks();
+    UserService.setupUsersSheet();
+
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      message: 'Sistem dan sheet berhasil diperbaiki serta disinkronisasi!',
+      spreadsheetId: CONFIG.SPREADSHEET_ID,
+      timestamp: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: err.message,
+      timestamp: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doPost(e) {
+  return doGet(e);
+}
+
+// ==============================================================================
 // Client-Side RPC Bridges for HTML Modals
 // ==============================================================================
 
@@ -59,7 +101,7 @@ function setupUsersSheetWrapper() {
  * Initial dataset payload for PrintCardModal.html
  */
 function getPrintModalInitialData() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheetInstance();
   const activeSheet = ss.getActiveSheet();
   let activeRow = -1;
   let activeNo = 1;

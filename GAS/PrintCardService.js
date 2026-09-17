@@ -6,19 +6,27 @@
 
 const PrintCardService = {
   /**
-   * Retrieves the target logo (Drive ID: 1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT)
-   * 1. Priority 1: High-res embedded Base64 data URI from LogoUri.js (instant, offline, zero latency)
-   * 2. Priority 2: Direct DriveApp extraction
-   * 3. Priority 3: Direct Google Drive UC URL
+   * Retrieves the official corporate logo:
+   * 1. Priority 1: High-res embedded Base64 data URI from LogoUri.js (official PT REKAINDO GLOBAL JASA / REKA INKA Group)
+   * 2. Priority 2: Check if Tcard sheet has an embedded image directly placed on the sheet
+   * 3. Priority 3: Custom DriveApp LOGO_ID (if explicitly configured and not the old school ID)
+   * 4. Priority 4: KPMscript native vector SVG badge (fill="#16233B" REKAINDO)
    */
   getLogoDataUri: function() {
-    const logoId = CONFIG.LOGO_ID || '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT';
+    const defaultSvgLogo = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='50' viewBox='0 0 120 50'><rect width='120' height='50' fill='%2316233B' rx='4'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='12' font-weight='bold' fill='%23FFFFFF'>REKAINDO</text></svg>";
 
-    // 1. Instant high-res embedded Base64 URI from LogoUri.js (exact 1UWZK logo)
+    // 1. Instant high-res embedded Base64 URI from LogoUri.js (official REKA INKA Group logo)
     try {
+      if (typeof getRekaindoLogoDataUri === 'function') {
+        const uri = getRekaindoLogoDataUri();
+        if (uri && uri.indexOf('data:image') === 0) return uri;
+      }
       if (typeof getTargetLogoDataUri === 'function') {
         const uri = getTargetLogoDataUri();
         if (uri && uri.indexOf('data:image') === 0) return uri;
+      }
+      if (typeof REKAINDO_LOGO_DATA_URI !== 'undefined' && REKAINDO_LOGO_DATA_URI && REKAINDO_LOGO_DATA_URI.indexOf('data:image') === 0) {
+        return REKAINDO_LOGO_DATA_URI;
       }
       if (typeof TARGET_LOGO_DATA_URI !== 'undefined' && TARGET_LOGO_DATA_URI && TARGET_LOGO_DATA_URI.indexOf('data:image') === 0) {
         return TARGET_LOGO_DATA_URI;
@@ -27,39 +35,58 @@ const PrintCardService = {
       Logger.log('getLogoDataUri LogoUri.js notice: ' + e.message);
     }
 
-    // 2. ScriptCache (KPMscript pattern)
+    // 2. Check if Tcard sheet has an embedded image placed directly by user
     try {
-      const cache = CacheService.getScriptCache();
-      const cached = cache.get('APP_PRINT_LOGO_' + logoId);
-      if (cached) return cached;
-    } catch (e) {}
-
-    // 3. Fallback: DriveApp fetch (KPMscript pattern)
-    try {
-      const file = DriveApp.getFileById(logoId);
-      const blob = file.getBlob();
-      const contentType = blob.getContentType();
-      const base64 = Utilities.base64Encode(blob.getBytes());
-      const dataUrl = 'data:' + contentType + ';base64,' + base64;
-      try {
-        if (dataUrl.length < 100000) {
-          CacheService.getScriptCache().put('APP_PRINT_LOGO_' + logoId, dataUrl, 21600); // 6 hours
+      const ss = getSpreadsheetInstance();
+      const tcardSheet = ss.getSheetByName(CONFIG.SHEET_TCARD);
+      if (tcardSheet) {
+        const images = tcardSheet.getImages();
+        if (images && images.length > 0) {
+          const blob = images[0].getBlob();
+          const contentType = blob.getContentType();
+          const base64 = Utilities.base64Encode(blob.getBytes());
+          return 'data:' + contentType + ';base64,' + base64;
         }
-      } catch (ce) {}
-      return dataUrl;
-    } catch (err) {
-      Logger.log('getLogoDataUri DriveApp warning: ' + err.message);
+      }
+    } catch (e) {
+      Logger.log('Tcard sheet image check warning: ' + e.message);
     }
 
-    // 4. Fallback Google Drive LH3 CDN direct URL
-    return 'https://lh3.googleusercontent.com/d/' + logoId;
+    // 3. Fallback: DriveApp fetch if custom logoId configured (ignoring old school ID)
+    const logoId = CONFIG.LOGO_ID;
+    if (logoId && logoId !== '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT' && logoId !== 'PASTE_YOUR_LOGO_FILE_ID_HERE') {
+      try {
+        const cache = CacheService.getScriptCache();
+        const cached = cache.get('APP_PRINT_LOGO_' + logoId);
+        if (cached) return cached;
+      } catch (e) {}
+
+      try {
+        const file = DriveApp.getFileById(logoId);
+        const blob = file.getBlob();
+        const contentType = blob.getContentType();
+        const base64 = Utilities.base64Encode(blob.getBytes());
+        const dataUrl = 'data:' + contentType + ';base64,' + base64;
+        try {
+          if (dataUrl.length < 100000) {
+            CacheService.getScriptCache().put('APP_PRINT_LOGO_' + logoId, dataUrl, 21600); // 6 hours
+          }
+        } catch (ce) {}
+        return dataUrl;
+      } catch (err) {
+        Logger.log('getLogoDataUri DriveApp warning: ' + err.message);
+      }
+    }
+
+    // 4. Default fallback: Clean SVG badge matching KPMscript pattern
+    return defaultSvgLogo;
   },
 
   /**
    * Returns list of all materials for UI selection
    */
   getAllMaterialsList: function() {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheetInstance();
     const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
     if (!sheet) return [];
 
@@ -78,12 +105,16 @@ const PrintCardService = {
       const group = String(row[CONFIG.COL.GROUP - 1] || '').trim();
       const lokasi = String(row[CONFIG.COL.LOKASI_RAK - 1] || '').trim();
 
-      if (kode || nama) {
+      const hasContent = row.slice(1, 9).some(function(v) {
+        return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
+      });
+
+      if (hasContent || noVal) {
         list.push({
-          no: (noVal !== '' && noVal !== null && noVal !== undefined) ? noVal : (i + 1),
+          no: (noVal !== '' && noVal !== null && noVal !== undefined) ? parseInt(noVal, 10) : (i + 1),
           rowIndex: CONFIG.DATA_START_ROW + i,
           kodeMaterial: kode || ('ITEM-' + (i + 1)),
-          namaBarang: nama,
+          namaBarang: nama || '-',
           group: group,
           lokasiRak: lokasi
         });
@@ -97,7 +128,7 @@ const PrintCardService = {
    * Returns list of all distinct Groups with their material items
    */
   getAllGroupsData: function() {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheetInstance();
     const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
     if (!sheet) return [];
 
@@ -121,11 +152,17 @@ const PrintCardService = {
           isBlank: false
         };
       }
+
+      const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
+      const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
+      const qty = row[CONFIG.COL.QTY - 1] || 0;
+      const uom = String(row[CONFIG.COL.UOM - 1] || '').trim();
+
       groupMap[g].items.push({
-        komat: row[CONFIG.COL.KODE_MATERIAL - 1] || '-',
-        name: row[CONFIG.COL.NAMA_BARANG - 1] || '-',
-        qty: row[CONFIG.COL.QTY - 1] || 0,
-        uom: row[CONFIG.COL.UOM - 1] || ''
+        komat: kode || ('ITEM-' + (i + 1)),
+        name: nama || '-',
+        qty: qty,
+        uom: uom || 'PCS'
       });
     }
 
@@ -258,7 +295,7 @@ const PrintCardService = {
    */
   promptAndPrintSingle: function() {
     const ui = SpreadsheetApp.getUi();
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheetInstance();
     const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
 
     if (!sheet) {
@@ -312,7 +349,7 @@ const PrintCardService = {
    */
   promptAndPrintGroup: function() {
     const ui = SpreadsheetApp.getUi();
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheetInstance();
     const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
 
     if (!sheet) {
@@ -364,23 +401,25 @@ const PrintCardService = {
    * Prepares Single Card print dataset normalized to full A4 sheets (4 cards per A4 page)
    */
   buildSinglePrintData: function(rangeInput) {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheetInstance();
     const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
     if (!sheet) return null;
 
-    const lastRow = sheet.getLastRow();
-    if (lastRow < CONFIG.DATA_START_ROW) return null;
-
+    const lastRow = Math.max(sheet.getLastRow(), CONFIG.DATA_START_ROW);
     const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
     const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 9).getValues();
 
     // Map rows by No
     const itemMapByNo = {};
     const allMaterials = [];
+    let maxKnownNo = 0;
+
     for (let i = 0; i < values.length; i++) {
       const row = values[i];
       const noVal = row[CONFIG.COL.NO - 1];
       const noNum = (noVal !== '' && noVal !== null && noVal !== undefined) ? parseInt(noVal, 10) : (i + 1);
+      if (noNum > maxKnownNo) maxKnownNo = noNum;
+
       const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
       const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
 
@@ -403,12 +442,27 @@ const PrintCardService = {
       allMaterials.push(itemObj);
     }
 
-    const selectedNos = this.parseNumericRange(rangeInput, allMaterials.length);
+    const selectedNos = this.parseNumericRange(rangeInput, Math.max(500, maxKnownNo + 20));
     const selectedItems = [];
     for (let s = 0; s < selectedNos.length; s++) {
       const n = selectedNos[s];
       if (itemMapByNo[n]) {
         selectedItems.push(itemMapByNo[n]);
+      } else {
+        selectedItems.push({
+          no: n,
+          rowIndex: 0,
+          kodeMaterial: 'ITEM-' + n,
+          namaBarang: '-',
+          spesifikasi: '',
+          lokasiRak: '-',
+          group: '-',
+          satuan: 'PCS',
+          qty: 0,
+          linkFoto: '',
+          barcodeValue: 'ITEM-' + n,
+          isBlank: false
+        });
       }
     }
 
@@ -450,17 +504,21 @@ const PrintCardService = {
 
     const summaryStr = totalPages + ' Lembar A4 (' + totalFilled + ' Kartu + ' + blankCount + ' Blank)';
 
+    const logoUri = this.getLogoDataUri();
+
     return {
       mode: 'single',
       title: 'Cetak Kartu Material (Single - 4/A4)',
       summary: summaryStr,
-      logoUrl: this.getLogoDataUri(),
+      logo: logoUri,
+      logoUrl: logoUri,
       pages: pages
     };
   },
 
   /**
-   * Prepares Group Card print dataset normalized to full A4 sheets (2 cards per A4 page)
+   * Prepares Group Card print dataset normalized to full A4 sheets (2 cards per A4 page).
+   * Paginates groups with >15 items into multiple 15-row cards matching Tcard physical specifications.
    */
   buildGroupPrintData: function(rangeInput) {
     const allGroups = this.getAllGroupsData();
@@ -469,22 +527,39 @@ const PrintCardService = {
     const selectedGroups = this.parseGroupRange(rangeInput, allGroups);
     if (selectedGroups.length === 0) return null;
 
-    // Normalization to 2 cards per A4 page
-    const totalFilled = selectedGroups.length;
-    const targetCardCount = Math.max(2, Math.ceil(totalFilled / 2) * 2);
-    const blankCount = targetCardCount - totalFilled;
-
     const allCards = [];
     for (let i = 0; i < selectedGroups.length; i++) {
       const grp = selectedGroups[i];
-      allCards.push({
-        groupName: grp.groupName || grp.name || '-',
-        deskripsi: grp.deskripsi || ('Daftar Material Group ' + (grp.groupName || grp.name || '')),
-        items: grp.items || [],
-        qrValue: 'GROUP:' + (grp.groupName || grp.name || ''),
-        isBlank: false
-      });
+      const items = grp.items || [];
+      const maxItemsPerCard = 15; // Exact 15 rows on physical Tcard Group Card
+
+      if (items.length <= maxItemsPerCard) {
+        allCards.push({
+          groupName: grp.groupName || grp.name || '-',
+          deskripsi: grp.deskripsi || ('Daftar Material Group ' + (grp.groupName || grp.name || '')),
+          items: items,
+          qrValue: 'GROUP:' + (grp.groupName || grp.name || ''),
+          isBlank: false
+        });
+      } else {
+        const totalChunks = Math.ceil(items.length / maxItemsPerCard);
+        for (let c = 0; c < totalChunks; c++) {
+          const chunkItems = items.slice(c * maxItemsPerCard, (c + 1) * maxItemsPerCard);
+          allCards.push({
+            groupName: (grp.groupName || grp.name || '-') + ' (' + (c + 1) + '/' + totalChunks + ')',
+            deskripsi: (grp.deskripsi || ('Daftar Material Group ' + (grp.groupName || grp.name || ''))) + ' [Bagian ' + (c + 1) + '/' + totalChunks + ']',
+            items: chunkItems,
+            qrValue: 'GROUP:' + (grp.groupName || grp.name || ''),
+            isBlank: false
+          });
+        }
+      }
     }
+
+    // Normalization to 2 cards per A4 page
+    const totalFilled = allCards.length;
+    const targetCardCount = Math.max(2, Math.ceil(totalFilled / 2) * 2);
+    const blankCount = targetCardCount - totalFilled;
 
     for (let b = 0; b < blankCount; b++) {
       allCards.push({
@@ -507,13 +582,15 @@ const PrintCardService = {
       });
     }
 
-    const summaryStr = totalPages + ' Lembar A4 (' + totalFilled + ' Group + ' + blankCount + ' Blank)';
+    const summaryStr = totalPages + ' Lembar A4 (' + totalFilled + ' Group Card + ' + blankCount + ' Blank)';
 
+    const groupLogo = this.getLogoDataUri();
     return {
       mode: 'group',
       title: 'Cetak Kartu Group (Group - 2/A4)',
       summary: summaryStr,
-      logoUrl: this.getLogoDataUri(),
+      logo: groupLogo,
+      logoUrl: groupLogo,
       pages: pages
     };
   },

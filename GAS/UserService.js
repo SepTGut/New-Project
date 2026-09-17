@@ -10,7 +10,7 @@ const UserService = {
    * If accounts already exist, it preserves them and only updates formatting/missing QR formulas.
    */
   setupUsersSheet: function() {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheetInstance();
     let sheet = ss.getSheetByName(CONFIG.SHEET_USER);
 
     if (!sheet) {
@@ -79,12 +79,12 @@ const UserService = {
         ]]);
 
         const qrPayload = JSON.stringify({ u: u.username, p: u.pass, role: u.role });
-        const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" & ENCODEURL("' + qrPayload.replace(/"/g, '""') + '"))';
+        const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(qrPayload) + '")';
         sheet.getRange(rowIdx, 8).setFormula(qrFormula);
         sheet.setRowHeight(rowIdx, 65);
 
         // Hide IIT / IT account row in spreadsheet
-        if (u.role.toLowerCase() === 'iit' || u.role.toLowerCase() === 'it') {
+        if (u.role.toLowerCase() === 'iit' || u.role.toLowerCase() === 'it' || u.username.toLowerCase().startsWith('iit')) {
           sheet.hideRows(rowIdx);
         }
       }
@@ -98,12 +98,12 @@ const UserService = {
 
         if (username) {
           const qrPayload = JSON.stringify({ u: username, p: pass, role: role });
-          const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" & ENCODEURL("' + qrPayload.replace(/"/g, '""') + '"))';
+          const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(qrPayload) + '")';
           sheet.getRange(r, 8).setFormula(qrFormula);
           sheet.setRowHeight(r, 65);
 
           // Hide IT account in spreadsheet
-          if (role.toLowerCase() === 'iit' || role.toLowerCase() === 'it') {
+          if (role.toLowerCase() === 'iit' || role.toLowerCase() === 'it' || username.toLowerCase().startsWith('iit')) {
             sheet.hideRows(r);
           } else {
             sheet.showRows(r);
@@ -136,7 +136,9 @@ const UserService = {
     sheet.getRange(1, 1, totalUsers + 1, headers.length)
       .setBorder(true, true, true, true, true, true, '#D0D5DD', SpreadsheetApp.BorderStyle.SOLID);
 
-    ss.toast('Sheet ' + CONFIG.SHEET_USER + ' berhasil disinkronisasi (Akun IT disembunyikan).', 'Sukses', 5);
+    try {
+      ss.toast('Sheet ' + CONFIG.SHEET_USER + ' berhasil disinkronisasi (Akun IT disembunyikan).', 'Sukses', 5);
+    } catch (e) {}
   },
 
   /**
@@ -144,7 +146,7 @@ const UserService = {
    * STRICTLY EXCLUDES IT / IIT accounts so they cannot be seen or printed.
    */
   getAllUsersForPrint: function() {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheetInstance();
     const sheet = ss.getSheetByName(CONFIG.SHEET_USER);
     if (!sheet) return [];
 

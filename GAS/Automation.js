@@ -4,66 +4,90 @@
  * Hyperlink formatting, and dynamic User account management.
  */
 
-/**
- * Standard onEdit trigger responding to user edits in real-time
- */
 function onEdit(e) {
   if (!e || !e.range) return;
-  const sheet = e.range.getSheet();
-  const sheetName = sheet.getName();
+  try {
+    const sheet = e.range.getSheet();
+    const sheetName = sheet.getName();
 
-  // Route 1: Edits on PictFinder
-  if (sheetName === CONFIG.SHEET_PICTFINDER) {
-    handlePictFinderEdit(e, sheet);
-    return;
-  }
+    // Route 1: Edits on PictFinder
+    if (sheetName === CONFIG.SHEET_PICTFINDER) {
+      handlePictFinderEdit(e, sheet);
+      return;
+    }
 
-  // Route 2: Edits on User sheet (add more or change just one account)
-  if (sheetName === CONFIG.SHEET_USER) {
-    handleUserEdit(e, sheet);
-    return;
+    // Route 2: Edits on User sheet (add more or change just one account)
+    if (sheetName === CONFIG.SHEET_USER) {
+      handleUserEdit(e, sheet);
+      return;
+    }
+  } catch (err) {
+    Logger.log('onEdit router error: ' + err.message);
   }
 }
 
 /**
- * Handles automated behavior on PictFinder sheet
+ * Handles automated behavior on PictFinder sheet.
+ * Fully supports multi-row pastes, drag-downs, and single-cell edits.
  */
 function handlePictFinderEdit(e, sheet) {
-  const row = e.range.getRow();
-  const col = e.range.getColumn();
-
-  if (row < CONFIG.DATA_START_ROW) return;
-
   try {
-    // 1. Auto No: If editing row and No is blank, auto-assign sequential number
-    const noCell = sheet.getRange(row, CONFIG.COL.NO);
-    if (!noCell.getValue()) {
-      const hasContent = sheet.getRange(row, 2, 1, 7).getValues()[0].some(function(v) {
-        return v !== '' && v !== null && v !== undefined;
-      });
-      if (hasContent) {
-        const autoNo = row - CONFIG.HEADER_ROW;
-        noCell.setValue(autoNo);
+    const startRow = e.range.getRow();
+    const numRows = e.range.getNumRows();
+    const endRow = startRow + numRows - 1;
+    const startCol = e.range.getColumn();
+    const numCols = e.range.getNumColumns();
+    const endCol = startCol + numCols - 1;
+
+    if (endRow < CONFIG.DATA_START_ROW) return;
+
+    const effectiveStart = Math.max(startRow, CONFIG.DATA_START_ROW);
+
+    // 1. Comprehensive auto No gap-healing & sequential assignment
+    const maxScanRow = Math.max(sheet.getLastRow(), endRow);
+    if (maxScanRow >= CONFIG.DATA_START_ROW) {
+      const numScan = maxScanRow - CONFIG.DATA_START_ROW + 1;
+      const allVals = sheet.getRange(CONFIG.DATA_START_ROW, 1, numScan, 9).getValues();
+      for (let i = 0; i < numScan; i++) {
+        const rIdx = CONFIG.DATA_START_ROW + i;
+        const rVals = allVals[i];
+        const hasContent = rVals.slice(1, 9).some(function(v) {
+          return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
+        });
+        if (hasContent) {
+          const expectedNo = rIdx - CONFIG.HEADER_ROW;
+          if (rVals[0] !== expectedNo) {
+            sheet.getRange(rIdx, CONFIG.COL.NO).setValue(expectedNo);
+          }
+        }
       }
     }
 
-    // 2. Auto Hyperlink if Link Foto was pasted
-    if (col === CONFIG.COL.LINK_FOTO) {
-      const val = String(e.value || sheet.getRange(row, col).getValue() || '').trim();
-      if (val && !val.startsWith('=HYPERLINK')) {
-        const cleanUrl = formatToDirectDriveUrl(val);
-        sheet.getRange(row, col).setFormula('=HYPERLINK("' + cleanUrl + '", "Link")');
+    // 2. Auto Hyperlink if Link Foto was pasted or edited
+    if (startCol <= CONFIG.COL.LINK_FOTO && endCol >= CONFIG.COL.LINK_FOTO) {
+      for (let r = effectiveStart; r <= endRow; r++) {
+        const val = String(sheet.getRange(r, CONFIG.COL.LINK_FOTO).getValue() || '').trim();
+        if (val && !val.startsWith('=HYPERLINK')) {
+          const cleanUrl = formatToDirectDriveUrl(val);
+          sheet.getRange(r, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + cleanUrl + '", "Link")');
+        }
       }
     }
 
     // 3. Auto Link Foto detection from Drive when Kode Material is entered
-    if (col === CONFIG.COL.KODE_MATERIAL) {
-      const kodeMaterial = String(e.value || sheet.getRange(row, col).getValue() || '').trim();
-      const fotoCell = sheet.getRange(row, CONFIG.COL.LINK_FOTO);
-      if (kodeMaterial && !fotoCell.getValue()) {
-        const matchedUrl = findDriveImageUrlByCode(kodeMaterial);
-        if (matchedUrl) {
-          fotoCell.setFormula('=HYPERLINK("' + matchedUrl + '", "Link")');
+    if (startCol <= CONFIG.COL.KODE_MATERIAL && endCol >= CONFIG.COL.KODE_MATERIAL) {
+      for (let r = effectiveStart; r <= endRow; r++) {
+        const kodeMaterial = String(sheet.getRange(r, CONFIG.COL.KODE_MATERIAL).getValue() || '').trim();
+        const fotoCell = sheet.getRange(r, CONFIG.COL.LINK_FOTO);
+        if (kodeMaterial && kodeMaterial !== '-' && !fotoCell.getValue()) {
+          try {
+            const matchedUrl = findDriveImageUrlByCode(kodeMaterial);
+            if (matchedUrl) {
+              fotoCell.setFormula('=HYPERLINK("' + matchedUrl + '", "Link")');
+            }
+          } catch (de) {
+            Logger.log('Drive lookup notice: ' + de.message);
+          }
         }
       }
     }
@@ -94,14 +118,14 @@ function handleUserEdit(e, sheet) {
     const pass = String(rowVals[5] || '').trim();
 
     if (username) {
-      // Auto-generate / update QR code formula
+      // Auto-generate / update QR code formula using JavaScript encodeURIComponent
       const qrPayload = JSON.stringify({ u: username, p: pass, role: role });
-      const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" & ENCODEURL("' + qrPayload.replace(/"/g, '""') + '"))';
+      const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(qrPayload) + '")';
       sheet.getRange(row, 8).setFormula(qrFormula);
       sheet.setRowHeight(row, 65);
 
       // 3. Auto-hide IT / IIT account row
-      if (role.toLowerCase() === 'iit' || role.toLowerCase() === 'it') {
+      if (role.toLowerCase() === 'iit' || role.toLowerCase() === 'it' || username.toLowerCase().startsWith('iit')) {
         sheet.hideRows(row);
       } else {
         sheet.showRows(row);
@@ -141,7 +165,7 @@ function formatToDirectDriveUrl(input) {
  * Searches the target Google Drive folder for an image matching the Kode Material
  */
 function findDriveImageUrlByCode(kodeMaterial) {
-  if (!kodeMaterial || !CONFIG.DRIVE_FOLDER_ID) return null;
+  if (!kodeMaterial || kodeMaterial === '-' || !CONFIG.DRIVE_FOLDER_ID) return null;
   try {
     const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
     const cleanCode = String(kodeMaterial).trim().toLowerCase();
@@ -156,25 +180,29 @@ function findDriveImageUrlByCode(kodeMaterial) {
       }
     }
   } catch (err) {
-    Logger.log('findDriveImageUrlByCode warning: ' + err.message);
+    Logger.log('findDriveImageUrlByCode notice: ' + err.message);
   }
   return null;
 }
 
 /**
- * Batch utility to synchronize No numbering and format all Link Foto cells
+ * Batch utility to synchronize No numbering, heal missing headers, and format all Link Foto cells
  */
 function syncNoAndLinks() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheetInstance();
   const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
   if (!sheet) {
-    ss.toast('Sheet ' + CONFIG.SHEET_PICTFINDER + ' tidak ditemukan.', 'Error', 5);
+    try { ss.toast('Sheet ' + CONFIG.SHEET_PICTFINDER + ' tidak ditemukan.', 'Error', 5); } catch (e) {}
     return;
   }
 
+  // 1. Enforce & restore full header row
+  const headers = ['No', 'Lokasi Rak', 'Group', 'Kode Material', 'Nama Barang', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
+  sheet.getRange(CONFIG.HEADER_ROW, 1, 1, 9).setValues([headers]);
+
   const lastRow = sheet.getLastRow();
   if (lastRow < CONFIG.DATA_START_ROW) {
-    ss.toast('Tidak ada baris data untuk disinkronisasi.', 'Info', 3);
+    try { ss.toast('Tidak ada baris data untuk disinkronisasi.', 'Info', 3); } catch (e) {}
     return;
   }
 
@@ -189,8 +217,8 @@ function syncNoAndLinks() {
     const rowIdx = CONFIG.DATA_START_ROW + i;
     const rowVals = rangeData[i];
 
-    const hasContent = rowVals.slice(1, 8).some(function(v) {
-      return v !== '' && v !== null && v !== undefined;
+    const hasContent = rowVals.slice(1, 9).some(function(v) {
+      return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
     });
 
     if (hasContent) {
@@ -206,19 +234,23 @@ function syncNoAndLinks() {
 
       if (currentFormula && currentFormula.startsWith('=HYPERLINK')) {
         // Already formatted hyperlink
-      } else if (currentVal && String(currentVal).trim()) {
+      } else if (currentVal && String(currentVal).trim() && String(currentVal).trim() !== '-') {
         const cleanUrl = formatToDirectDriveUrl(currentVal);
         sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + cleanUrl + '", "Link")');
         updatedLinkCount++;
-      } else if (kodeMaterial) {
-        const matched = findDriveImageUrlByCode(kodeMaterial);
-        if (matched) {
-          sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + matched + '", "Link")');
-          updatedLinkCount++;
-        }
+      } else if (kodeMaterial && String(kodeMaterial).trim() !== '-') {
+        try {
+          const matched = findDriveImageUrlByCode(kodeMaterial);
+          if (matched) {
+            sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + matched + '", "Link")');
+            updatedLinkCount++;
+          }
+        } catch (de) {}
       }
     }
   }
 
-  ss.toast('Sinkronisasi selesai! No: ' + updatedNoCount + ' baris diperbarui, Link: ' + updatedLinkCount + ' formula diperbarui.', 'Sukses', 5);
+  try {
+    ss.toast('Sinkronisasi selesai! No: ' + updatedNoCount + ' baris diperbarui, Link: ' + updatedLinkCount + ' formula diperbarui.', 'Sukses', 5);
+  } catch (e) {}
 }

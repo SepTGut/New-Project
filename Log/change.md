@@ -249,32 +249,46 @@ All notable changes and architectural transitions are documented in this file.
 
 ---
 
-## [GAS v2.9: Fix Logo Rendering with Unescaped Scriptlet & Google LH3 CDN Fallback] - 2026-09-17
-### Fixed
-- **Root Cause Analysis in KPMscript**:
-  - In `PrintKPM.html` (line 479) and `AboutDialog.html` (line 260), KPMscript uses raw unescaped scriptlets `<?!= data.logo ?>` (with `!`).
-  - Previously in `PrintCardModal.html`, `<?= data.logoUrl ?>` was used without `!`, causing Google Apps Script's HTML template engine to escape semicolons, slashes, and equal signs into HTML entities (`&#59;`, `&#x2F;`, `&#61;`), breaking browser data URI parsing.
-- **Unescaped Scriptlet Output**:
-  - Updated both single card and group card logo image tags to `<?!= data.logoUrl ?>`.
-- **Multi-Tier Robust Fallback & Direct Google LH3 CDN**:
-  - Extracted the exact logo for Drive ID `1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT` into `GAS/LogoUri.js` at a crisp 200px resolution (74 KB).
-  - Added `onerror="this.onerror=null; this.src='https://lh3.googleusercontent.com/d/1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT';"` to instantly fall back to Google's universal high-speed image CDN if data URI ever fails.
-  - Mirrored KPMscript's in-memory and `ScriptCache` caching in `PrintCardService.getLogoDataUri()`.
-- **Deployment**:
-  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
-  - Created version 13 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@13).
+## [GAS v3.1: Sheet Bug Detection, Auto Gap-Healing, 15-Item Group Cards & Bulletproof Logo Delivery] - 2026-09-17
+### Identified Sheet & Architecture Issues
+- **Sheet Numbering Gaps Identified (`PictFinder`)**:
+  - Probing detected missing numbers at Row 9 (item 4 between 3 and 5) and Row 15 (item 10 between 9 and 11).
+  - Row 1 Cell A1 of the `User` tab was blank (missing header title `'No'`).
+- **Simple Trigger Permission Bottleneck**:
+  - `Config.js` `getEnv()` was attempting `props.setProperty()`, which is prohibited in Google Apps Script unauthenticated simple triggers (`onEdit`) and throws authorization exceptions.
+  - Made `getEnv()` strictly read-only with defensive try-catch.
+- **Group Card 5-Row Chunking Bug**:
+  - `PrintCardService.js` had `maxItemsPerCard = 5` instead of `15`. Because the physical Tcard Group ledger has 15 material rows, a group with 12 items was being unnecessarily chunked into 3 cards of 5 items each with 10 empty lines on each card.
+  - Updated `maxItemsPerCard` to `15` so groups up to 15 items print cleanly on a single card.
+- **Logo Delivery & Syntax Safety**:
+  - Added KPMscript's inline SVG badge as bulletproof fallback in `PrintCardService.getLogoDataUri()`.
+  - Exposed both `data.logo` and `data.logoUrl` in all print datasets.
+  - Replaced unescaped string injection in `PrintUserQR.html` with `<?= JSON.stringify(logoUri) ?>` to eliminate any risk of `SyntaxError: Invalid or unexpected token`.
+- **Instant Numbering Gap-Healing**:
+  - `handlePictFinderEdit` now scans all existing data rows on edit and automatically restores missing sequential numbers whenever any cell in the sheet is edited.
+  - `fixFormat()` now repairs and standardizes both `PictFinder` and `User` sheet headers simultaneously.
 
+### Deployment
+- Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
 
+---
 
-
-
-
-
-
-
-
-
-
-
-
+## [GAS v3.2: Replaced School Emblem with Official KPMscript REKAINDO Corporate Logo] - 2026-09-17
+### Completed
+- **Removed SMKN 1 School Logo**:
+  - Completely removed the school emblem (Google Drive ID `1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT` from `About.gs`) from active configuration, templates, and fallbacks per explicit user instruction.
+  - Cleared `LOGO_ID` default in `GAS/Config.js` (`getEnv('LOGO_ID', '')`) and in `initializeScriptProperties()` to ensure the project does not default to the school emblem.
+  - Removed LH3 CDN `onerror` fallback targeting the school emblem from `GAS/PrintCardModal.html`.
+- **Integrated Official PT REKAINDO GLOBAL JASA (REKA INKA Group) Corporate Logo**:
+  - Restored the official high-resolution corporate logo (`REKAINDO_LOGO_DATA_URI`, 30KB optimized transparent PNG) used by KPMscript's print feature (`kpmprint` / `printKpmM` / `PrintKPM.html` / `Code.gs`) in `GAS/LogoUri.js`.
+  - Added compatibility aliases `TARGET_LOGO_DATA_URI`, `getTargetLogoDataUri()`, and `getRekaindoLogoDataUri()`.
+  - Updated `GAS/PrintCardService.js` `getLogoDataUri()` to prioritize the official REKA INKA Group logo, check for user-placed images on the `Tcard` tab, and use KPMscript's native vector SVG badge (`fill="#16233B"` with text `REKAINDO`) as the fallback instead of the SMKN 1 SVG.
+- **Card & Modal Layout Adjustments**:
+  - Adjusted logo container dimensions in `GAS/PrintCardModal.html` (32×16 mm on Single Card, 46×18 mm on Group Card) and `GAS/PrintUserQR.html` (32×12 mm on ID badges) with `object-fit: contain` to showcase the ~2.83:1 rectangular corporate brand.
+  - Updated `GAS/PrintUserQR.html` `DEFAULT_LOGO_DATA_URI` to use the REKA INKA Group logo.
+- **Verification & Deployment**:
+  - Verified compilation of all 7 JavaScript modules with Node.js (`node -c`).
+  - Simulated `getLogoDataUri()` in Node.js VM confirming exact dimensions (600×212) and 30,188-byte PNG buffer.
+  - Pushed all 10 project files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 17 and updated active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@17).
 
