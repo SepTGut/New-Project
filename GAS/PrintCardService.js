@@ -12,8 +12,16 @@ const PrintCardService = {
    */
   getLogoDataUri: function() {
     // 1. Instant high-res embedded Base64 URI for 1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT
-    if (typeof TARGET_LOGO_DATA_URI !== 'undefined' && TARGET_LOGO_DATA_URI) {
-      return TARGET_LOGO_DATA_URI;
+    try {
+      if (typeof getTargetLogoDataUri === 'function') {
+        const uri = getTargetLogoDataUri();
+        if (uri) return uri;
+      }
+      if (typeof TARGET_LOGO_DATA_URI !== 'undefined' && TARGET_LOGO_DATA_URI) {
+        return TARGET_LOGO_DATA_URI;
+      }
+    } catch (e) {
+      Logger.log('getLogoDataUri notice: ' + e.message);
     }
 
     // 2. DriveApp extraction

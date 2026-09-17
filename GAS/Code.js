@@ -21,7 +21,10 @@ function onOpen() {
  * Opens Print Card modal in Single Item mode
  */
 function openSingleCardDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('PrintCardModal')
+  const template = HtmlService.createTemplateFromFile('PrintCardModal');
+  template.initialMode = 'single';
+  template.logoUri = PrintCardService.getLogoDataUri();
+  const html = template.evaluate()
     .setWidth(980)
     .setHeight(720)
     .setTitle('Cetak Kartu Stok Material (Single - 4/A4)');
@@ -32,7 +35,10 @@ function openSingleCardDialog() {
  * Opens Print Card modal in Group mode
  */
 function openGroupCardDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('PrintCardModal')
+  const template = HtmlService.createTemplateFromFile('PrintCardModal');
+  template.initialMode = 'group';
+  template.logoUri = PrintCardService.getLogoDataUri();
+  const html = template.evaluate()
     .setWidth(980)
     .setHeight(720)
     .setTitle('Cetak Kartu Stok Material (Group - 2/A4)');
@@ -43,7 +49,9 @@ function openGroupCardDialog() {
  * Opens User Login QR Badge printing modal
  */
 function openUserQRDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('PrintUserQR')
+  const template = HtmlService.createTemplateFromFile('PrintUserQR');
+  template.logoUri = PrintCardService.getLogoDataUri();
+  const html = template.evaluate()
     .setWidth(920)
     .setHeight(680)
     .setTitle('Cetak Kartu QR Login Pengguna');

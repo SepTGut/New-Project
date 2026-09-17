@@ -171,6 +171,26 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 8 and redeployed active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@8).
 
+---
+
+## [GAS v2.5: Server-Side Template & Embedded Logo Delivery] - 2026-09-17
+### Fixed
+- **Instant Server-Side Template Evaluation**:
+  - Upgraded `openSingleCardDialog()`, `openGroupCardDialog()`, and `openUserQRDialog()` from static `HtmlService.createHtmlOutputFromFile` to dynamic `HtmlService.createTemplateFromFile()`.
+  - Injected `logoUri` and `initialMode` server-side before the dialog is rendered, eliminating the visual delay and blank modal state while `google.script.run` executes.
+- **Permanent Drive Hotlink Immunity**:
+  - Eliminated `https://drive.google.com/uc?id=...` fallback URLs which are blocked by modern browsers (403 Forbidden / Opaque Response Blocking).
+  - Embedded `DEFAULT_LOGO_DATA_URI` directly inside `PrintCardModal.html` and `PrintUserQR.html` client scripts so the logo is 100% immune to network errors, permission issues, or RPC serialization failures.
+- **Resolved ES6 Temporal Dead Zone (TDZ) in Apps Script**:
+  - Converted `const TARGET_LOGO_DATA_URI` in `GAS/LogoUri.js` to `var TARGET_LOGO_DATA_URI` and added hoisted `function getTargetLogoDataUri()`.
+  - Wrapped `PrintCardService.getLogoDataUri()` with defensive try-catch and hoisted function dispatch.
+- **Robust RPC Error Handling**:
+  - Added `.withFailureHandler()` to all client-side `google.script.run` invocations.
+- **Deployment**:
+  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 9 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@9).
+
+
 
 
 
