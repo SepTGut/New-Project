@@ -3,9 +3,9 @@
 <head>
   <base target="_top">
   <meta charset="UTF-8">
-  <title>Cetak Kartu Stok Material</title>
+  <title>Cetak Kartu Stok Material (Referensi Tcard)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Roboto+Mono:wght@600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <style>
     * {
@@ -16,16 +16,16 @@
 
     @page {
       size: A4 portrait;
-      margin: 8mm;
+      margin: 6mm;
     }
 
     body {
       margin: 0;
       padding: 0;
-      background: #eaedf2;
+      background: #e8ebf0;
       font-family: 'Plus Jakarta Sans', Arial, sans-serif;
-      color: #1a1a1a;
-      font-size: 11px;
+      color: #000000;
+      font-size: 10px;
     }
 
     /* Screen Toolbar */
@@ -35,13 +35,13 @@
       z-index: 1000;
       background: #1A237E;
       color: #ffffff;
-      padding: 10px 16px;
+      padding: 10px 18px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
     }
 
     .toolbar-group {
@@ -61,15 +61,15 @@
 
     .toolbar select {
       background: #ffffff;
-      color: #1a1a1a;
-      max-width: 260px;
-      font-weight: 500;
+      color: #000000;
+      max-width: 280px;
+      font-weight: 600;
     }
 
     .btn-print {
       background: #00E676;
       color: #004D40;
-      font-weight: 700;
+      font-weight: 800;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
@@ -85,234 +85,252 @@
       background: rgba(255,255,255,0.15);
       color: #ffffff;
       cursor: pointer;
-      font-weight: 600;
+      font-weight: 700;
     }
     .btn-tab.active {
       background: #ffffff;
       color: #1A237E;
     }
 
-    /* A4 Paper Sheet Preview */
-    .a4-page {
+    /* ========================================================
+       A4 PAPER CONTAINER (210mm x 297mm)
+       ======================================================== */
+    .a4-sheet {
       width: 210mm;
       min-height: 297mm;
       margin: 15px auto;
       background: #ffffff;
-      padding: 6mm;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      padding: 6mm 4mm;
+      box-shadow: 0 4px 25px rgba(0,0,0,0.18);
       position: relative;
     }
 
     /* ========================================================
-       SINGLE ITEM CARDS: 4 CARDS PER A4 (2x2 GRID, 90x110mm)
+       SINGLE ITEM CARD (TCARD LEFT HALF):
+       Exact 90mm x 110mm on A4 (4 Cards in 2x2 Grid with 1.5mm gap)
        ======================================================== */
-    .grid-4 {
+    .grid-single-4 {
       display: grid;
       grid-template-columns: 96mm 96mm;
       grid-template-rows: 138mm 138mm;
-      gap: 4mm;
+      gap: 1.5mm;
       justify-content: center;
       align-content: center;
     }
 
-    .card-single {
+    .card-single-box {
       width: 96mm;
       height: 138mm;
-      border: 1.5px solid #111111;
-      border-radius: 4px;
-      padding: 3mm;
+      border: 2px solid #000000;
+      padding: 3mm 3.5mm;
       display: flex;
       flex-direction: column;
       position: relative;
       background: #ffffff;
+      overflow: hidden;
     }
 
-    /* Cut corner guidelines */
-    .corner-guide-left {
+    /* Chamfer / Diagonal Corner Cut Guidelines (45deg cutting line) */
+    .cut-line {
       position: absolute;
+      width: 9mm;
+      height: 9mm;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .cut-line-tl {
       top: 0;
       left: 0;
-      width: 6mm;
-      height: 6mm;
-      border-right: 1px dashed #9e9e9e;
-      border-bottom: 1px dashed #9e9e9e;
     }
-    .corner-guide-right {
-      position: absolute;
+    .cut-line-tr {
       top: 0;
       right: 0;
-      width: 6mm;
-      height: 6mm;
-      border-left: 1px dashed #9e9e9e;
-      border-bottom: 1px dashed #9e9e9e;
     }
 
-    .card-header {
+    .single-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1.5px solid #111111;
-      padding-bottom: 2mm;
-      margin-bottom: 2mm;
-      height: 18mm;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 1.5mm;
+      margin-bottom: 1.5mm;
+      height: 17mm;
     }
 
-    .logo-box {
-      width: 22mm;
-      height: 16mm;
+    .logo-container {
+      width: 25mm;
+      height: 15mm;
       display: flex;
       align-items: center;
       justify-content: flex-start;
     }
     .logo-img {
       max-width: 100%;
-      max-height: 16mm;
+      max-height: 15mm;
       object-fit: contain;
     }
 
-    .hole-punch {
-      width: 6mm;
-      height: 6mm;
-      border: 1.5px dashed #424242;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 8px;
-      color: #757575;
-      margin: 0 auto;
-    }
-
-    .barcode-box {
-      width: 36mm;
-      height: 16mm;
+    .hole-indicator {
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
+      align-items: center;
       justify-content: center;
+      gap: 1px;
+      margin: 0 auto;
+    }
+    .hole-circle {
+      width: 6mm;
+      height: 6mm;
+      border: 1.2px dashed #424242;
+      border-radius: 50%;
+      background: #ffffff;
+      position: relative;
+    }
+    .hole-lbl {
+      font-size: 5pt;
+      font-weight: 700;
+      color: #616161;
+      letter-spacing: 0.5px;
+    }
+
+    .barcode-container {
+      width: 38mm;
+      height: 15mm;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
     }
     .barcode-svg {
       width: 100%;
-      max-height: 13mm;
+      max-height: 14mm;
     }
 
-    .card-title {
+    .main-card-title {
       text-align: center;
       font-size: 11pt;
-      font-weight: 800;
-      letter-spacing: 0.5px;
+      font-weight: 900;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin: 1mm 0 2mm 0;
       color: #000000;
     }
 
-    .meta-table {
+    .meta-fields {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 2mm;
       font-size: 8.5pt;
     }
-    .meta-table td {
-      padding: 1mm 0;
+    .meta-fields td {
+      padding: 0.8mm 0;
       vertical-align: top;
-    }
-    .meta-table td.label {
-      width: 25mm;
-      font-weight: 700;
-      color: #212121;
-    }
-    .meta-table td.val {
-      font-weight: 600;
       color: #000000;
     }
+    .meta-fields td.lbl {
+      width: 26mm;
+      font-weight: 800;
+    }
+    .meta-fields td.txt {
+      font-weight: 600;
+    }
 
-    /* 15 Rows Ledger Table */
-    .ledger-table {
+    /* 15 Rows Ledger Table (fit only 6) */
+    .table-ledger {
       width: 100%;
       border-collapse: collapse;
       flex-grow: 1;
       font-size: 7.5pt;
     }
-    .ledger-table th, .ledger-table td {
-      border: 1px solid #111111;
-      padding: 1.2mm 1mm;
+    .table-ledger th, .table-ledger td {
+      border: 1.5px solid #000000;
+      padding: 1.1mm 1mm;
       text-align: center;
+      color: #000000;
     }
-    .ledger-table th {
-      background: #f0f0f0;
-      font-weight: 700;
+    .table-ledger th {
+      background: #e0e0e0;
+      font-weight: 900;
       font-size: 7pt;
       text-transform: uppercase;
     }
-    .ledger-table td.col-date { width: 14mm; }
-    .ledger-table td.col-move { width: 18mm; }
-    .ledger-table td.col-mut { width: 12mm; }
-    .ledger-table td.col-stock { width: 13mm; font-weight: 700; }
-    .ledger-table td.col-note { width: 22mm; text-align: left; }
+    .table-ledger td.c-no { width: 6mm; font-weight: 700; }
+    .table-ledger td.c-date { width: 14mm; }
+    .table-ledger td.c-move { width: 18mm; }
+    .table-ledger td.c-mut { width: 12mm; }
+    .table-ledger td.c-stock { width: 14mm; font-weight: 800; }
+    .table-ledger td.c-note { width: 24mm; text-align: left; }
 
     /* ========================================================
-       GROUP CARDS: 2 CARDS PER A4 (HALF A4 / A5 STACKED)
+       GROUP CARD (TCARD RIGHT HALF):
+       Exact A4/2 (Half A4 / A5 size, 2 cards per A4 page)
        ======================================================== */
-    .grid-2 {
+    .grid-group-2 {
       display: flex;
       flex-direction: column;
-      gap: 6mm;
+      gap: 5mm;
       height: 100%;
+      justify-content: center;
     }
 
-    .card-group {
-      width: 196mm;
+    .card-group-box {
+      width: 198mm;
       height: 138mm;
-      border: 1.5px solid #111111;
-      border-radius: 4px;
-      padding: 4mm;
+      border: 2px solid #000000;
+      padding: 4mm 5mm;
       display: flex;
       flex-direction: column;
       position: relative;
       background: #ffffff;
+      overflow: hidden;
+      margin: 0 auto;
     }
 
-    .card-group .card-header {
+    .card-group-box .single-header {
       height: 22mm;
     }
-    .card-group .logo-box {
+    .card-group-box .logo-container {
       width: 35mm;
       height: 20mm;
     }
-    .card-group .qr-box {
+    .card-group-box .qr-container {
       width: 22mm;
       height: 22mm;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
     }
-    .card-group .qr-img {
+    .card-group-box .qr-img {
       width: 22mm;
       height: 22mm;
       object-fit: contain;
     }
 
-    .group-ledger-table {
+    /* Group Ledger Table (fit only 5) */
+    .table-group-ledger {
       width: 100%;
       border-collapse: collapse;
       flex-grow: 1;
       font-size: 8.5pt;
     }
-    .group-ledger-table th, .group-ledger-table td {
-      border: 1px solid #111111;
-      padding: 1.6mm 2mm;
+    .table-group-ledger th, .table-group-ledger td {
+      border: 1.5px solid #000000;
+      padding: 1.5mm 2mm;
       text-align: center;
+      color: #000000;
     }
-    .group-ledger-table th {
-      background: #f0f0f0;
-      font-weight: 700;
+    .table-group-ledger th {
+      background: #e0e0e0;
+      font-weight: 900;
       font-size: 8pt;
       text-transform: uppercase;
     }
-    .group-ledger-table td.gcol-no { width: 10mm; }
-    .group-ledger-table td.gcol-komat { width: 38mm; font-weight: 700; }
-    .group-ledger-table td.gcol-name { width: 75mm; text-align: left; }
-    .group-ledger-table td.gcol-mut { width: 25mm; }
-    .group-ledger-table td.gcol-stock { width: 28mm; font-weight: 700; }
+    .table-group-ledger td.gc-no { width: 8mm; font-weight: 700; }
+    .table-group-ledger td.gc-komat { width: 40mm; font-weight: 800; font-family: 'Roboto Mono', monospace; }
+    .table-group-ledger td.gc-name { width: 75mm; text-align: left; }
+    .table-group-ledger td.gc-mut { width: 25mm; }
+    .table-group-ledger td.gc-stock { width: 30mm; font-weight: 800; }
 
-    /* Print Styles */
+    /* Print Overrides */
     @media print {
       body {
         background: #ffffff;
@@ -320,7 +338,7 @@
       .toolbar {
         display: none !important;
       }
-      .a4-page {
+      .a4-sheet {
         margin: 0;
         padding: 0;
         box-shadow: none;
@@ -337,41 +355,52 @@
   <div class="toolbar">
     <div class="toolbar-group">
       <button id="tabSingle" class="btn-tab active" onclick="switchMode('single')">🏷️ Kartu Material (4/A4)</button>
-      <button id="tabGroup" class="btn-tab" onclick="switchMode('group')">📦 Kartu Group (2/A4)</button>
+      <button id="tabGroup" class="btn-tab" onclick="switchMode('group')">📦 Kartu Group (2/A4 - A5)</button>
     </div>
 
     <!-- Selectors -->
     <div class="toolbar-group" id="singleControls">
-      <label style="font-weight:600;">Pilih Material:</label>
+      <label style="font-weight:700;">Material:</label>
       <select id="materialSelect" onchange="loadSelectedMaterial()">
         <option value="">-- Memuat Material... --</option>
+      </select>
+      <label style="font-weight:700; margin-left:4px;">Layout:</label>
+      <select id="singleLayoutMode" onchange="applySingleLayout()">
+        <option value="1plus3">1 Kartu + 3 Blank Template (Tcard)</option>
+        <option value="4same">4x Duplikat Material</option>
+        <option value="4seq">4 Material Berurutan</option>
       </select>
     </div>
 
     <div class="toolbar-group" id="groupControls" style="display:none;">
-      <label style="font-weight:600;">Pilih Group:</label>
+      <label style="font-weight:700;">Group:</label>
       <select id="groupSelect" onchange="loadSelectedGroup()">
         <option value="">-- Memuat Group... --</option>
+      </select>
+      <label style="font-weight:700; margin-left:4px;">Layout:</label>
+      <select id="groupLayoutMode" onchange="applyGroupLayout()">
+        <option value="1plus1">1 Group + 1 Blank Template (Tcard)</option>
+        <option value="2same">2x Duplikat Group</option>
       </select>
     </div>
 
     <div class="toolbar-group">
       <button class="btn-print" onclick="window.print()">🖨️ Cetak A4 (Print)</button>
-      <button onclick="google.script.host.close()" style="background:#455A64; color:#fff; cursor:pointer;">✕ Tutup</button>
+      <button onclick="google.script.host.close()" style="background:rgba(255,255,255,0.2); color:#fff; cursor:pointer;">✕ Tutup</button>
     </div>
   </div>
 
   <!-- A4 Page Container -->
-  <div class="a4-page">
+  <div class="a4-sheet">
     
-    <!-- SINGLE ITEM VIEW: 4 CARDS (2x2 GRID) -->
-    <div id="singleView" class="grid-4">
-      <!-- 4 Cards will be generated dynamically -->
+    <!-- SINGLE ITEM VIEW: 4 CARDS (2x2 GRID, TCARD LEFT HALF) -->
+    <div id="singleView" class="grid-single-4">
+      <!-- Generated dynamically -->
     </div>
 
-    <!-- GROUP VIEW: 2 CARDS (HALF A4) -->
-    <div id="groupView" class="grid-2" style="display:none;">
-      <!-- 2 Cards will be generated dynamically -->
+    <!-- GROUP VIEW: 2 CARDS (A4/2, TCARD RIGHT HALF) -->
+    <div id="groupView" class="grid-group-2" style="display:none;">
+      <!-- Generated dynamically -->
     </div>
 
   </div>
@@ -381,8 +410,9 @@
     let materialsList = [];
     let groupsList = [];
     let logoDataUri = '';
+    let currentSingleItem = null;
+    let currentGroupData = null;
 
-    // Initialize data from server
     window.onload = function() {
       google.script.run.withSuccessHandler(function(data) {
         materialsList = data.materials || [];
@@ -392,8 +422,11 @@
         populateMaterialDropdown();
         populateGroupDropdown();
 
-        // Default: render active item
-        if (materialsList.length > 0) {
+        if (data.defaultItem) {
+          renderSingleCardPage(data.defaultItem);
+          const select = document.getElementById('materialSelect');
+          select.value = data.defaultItem.kodeMaterial;
+        } else if (materialsList.length > 0) {
           renderSingleCardPage(materialsList[0]);
         }
       }).getPrintModalInitialData();
@@ -432,7 +465,7 @@
       groupsList.forEach(g => {
         const opt = document.createElement('option');
         opt.value = g.name;
-        opt.textContent = `Group ${g.name} (${g.count} items)`;
+        opt.textContent = `Group ${g.name} (${g.count} material)`;
         select.appendChild(opt);
       });
     }
@@ -451,84 +484,130 @@
       }).getGroupCardData(gname);
     }
 
-    // Render 4 Single Cards on A4 page (Slot 1 active, Slots 2-4 blank duplicates)
+    // Render 4 Single Cards on A4 page
     function renderSingleCardPage(activeItem) {
+      currentSingleItem = activeItem;
+      applySingleLayout();
+    }
+
+    function applySingleLayout() {
+      const layout = document.getElementById('singleLayoutMode') ? document.getElementById('singleLayoutMode').value : '1plus3';
       const container = document.getElementById('singleView');
       container.innerHTML = '';
 
-      const items = [
-        activeItem || { isBlank: true },
-        { isBlank: true },
-        { isBlank: true },
-        { isBlank: true }
-      ];
+      let cards = [];
+      if (layout === '4same') {
+        cards = [
+          currentSingleItem || { isBlank: true },
+          currentSingleItem || { isBlank: true },
+          currentSingleItem || { isBlank: true },
+          currentSingleItem || { isBlank: true }
+        ];
+      } else if (layout === '4seq' && currentSingleItem && materialsList.length > 0) {
+        const curIdx = materialsList.findIndex(m => m.kodeMaterial === currentSingleItem.kodeMaterial);
+        const startIdx = curIdx >= 0 ? curIdx : 0;
+        for (let i = 0; i < 4; i++) {
+          const mat = materialsList[startIdx + i];
+          if (mat) {
+            cards.push({
+              kodeMaterial: mat.kodeMaterial,
+              namaBarang: mat.namaBarang,
+              lokasiRak: mat.lokasiRak,
+              isBlank: false
+            });
+          } else {
+            cards.push({ isBlank: true });
+          }
+        }
+      } else {
+        // Default Tcard: 1 active card + 3 blank duplicate template cards
+        cards = [
+          currentSingleItem || { isBlank: true },
+          { isBlank: true },
+          { isBlank: true },
+          { isBlank: true }
+        ];
+      }
 
-      items.forEach((item, idx) => {
-        const card = createSingleCardElement(item, idx);
-        container.appendChild(card);
+      cards.forEach((item, idx) => {
+        const cardElem = createSingleCardElement(item, idx);
+        container.appendChild(cardElem);
 
         // Render Barcode
-        const svgId = `barcode-${idx}`;
-        const codeVal = item.isBlank ? 'BLANK-ITEM' : (item.kodeMaterial || 'NO-CODE');
-        try {
-          JsBarcode(`#${svgId}`, codeVal, {
-            format: "CODE128",
-            width: 1.2,
-            height: 35,
-            displayValue: !item.isBlank,
-            fontSize: 9,
-            margin: 0
-          });
-        } catch (e) {
-          console.warn('Barcode error', e);
+        const svgId = `barcode-svg-${idx}`;
+        const codeVal = item.isBlank ? ' ' : (item.kodeMaterial || 'NO-CODE');
+        if (!item.isBlank && codeVal.trim()) {
+          try {
+            JsBarcode(`#${svgId}`, codeVal, {
+              format: "CODE128",
+              width: 1.15,
+              height: 32,
+              displayValue: true,
+              fontSize: 8.5,
+              font: "Roboto Mono",
+              margin: 0
+            });
+          } catch (e) {
+            console.warn('Barcode generation warning', e);
+          }
         }
       });
     }
 
     function createSingleCardElement(item, idx) {
       const div = document.createElement('div');
-      div.className = 'card-single';
+      div.className = 'card-single-box';
 
-      const logoHtml = logoDataUri ? `<img src="${logoDataUri}" class="logo-img" alt="Logo">` : `<div style="font-weight:800; font-size:9pt; color:#1A237E;">GUDANG</div>`;
+      const logoHtml = logoDataUri
+        ? `<img src="${logoDataUri}" class="logo-img" alt="Logo">`
+        : `<div style="font-weight:900; font-size:9pt; color:#1A237E;">LOGOKPM</div>`;
 
       div.innerHTML = `
-        <div class="corner-guide-left" title="diagonal upr to btl"></div>
-        <div class="corner-guide-right" title="diagonal upl to btr"></div>
+        <!-- Diagonal Corner Cut Guidelines (45deg cutting line matching Tcard) -->
+        <svg class="cut-line cut-line-tl" viewBox="0 0 10 10" title="diagonal upr to btl">
+          <line x1="0" y1="10" x2="10" y2="0" stroke="#616161" stroke-dasharray="2,1.5" stroke-width="0.8"/>
+        </svg>
+        <svg class="cut-line cut-line-tr" viewBox="0 0 10 10" title="diagonal upl to btr">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="#616161" stroke-dasharray="2,1.5" stroke-width="0.8"/>
+        </svg>
 
-        <div class="card-header">
-          <div class="logo-box">${logoHtml}</div>
-          <div class="hole-punch" title="Hole">⚪</div>
-          <div class="barcode-box">
-            <svg id="barcode-${idx}" class="barcode-svg"></svg>
+        <div class="single-header">
+          <div class="logo-container">${logoHtml}</div>
+          <div class="hole-indicator" title="Hole Punch Guide">
+            <div class="hole-circle"></div>
+            <span class="hole-lbl">HOLE</span>
+          </div>
+          <div class="barcode-container">
+            ${item.isBlank ? '<div style="font-size:7pt; color:#9e9e9e; font-style:italic;">[ BARCODE ]</div>' : `<svg id="barcode-svg-${idx}" class="barcode-svg"></svg>`}
           </div>
         </div>
 
-        <div class="card-title">KARTU STOCK MATERIAL</div>
+        <div class="main-card-title">KARTU STOCK MATERIAL</div>
 
-        <table class="meta-table">
+        <table class="meta-fields">
           <tr>
-            <td class="label">Kode Material</td>
-            <td class="val">: ${item.isBlank ? '..............................' : (item.kodeMaterial || '-')}</td>
+            <td class="lbl">Kode Material :</td>
+            <td class="txt">${item.isBlank ? '..................................................' : (item.kodeMaterial || '-')}</td>
           </tr>
           <tr>
-            <td class="label">Deskripsi</td>
-            <td class="val">: ${item.isBlank ? '..............................' : (item.namaBarang || '-')}</td>
+            <td class="lbl">Deskription :</td>
+            <td class="txt">${item.isBlank ? '..................................................' : (item.namaBarang || '-')}</td>
           </tr>
           <tr>
-            <td class="label">Location</td>
-            <td class="val">: ${item.isBlank ? '..............................' : (item.lokasiRak || '-')}</td>
+            <td class="lbl">Location :</td>
+            <td class="txt">${item.isBlank ? '..................................................' : (item.lokasiRak || '-')}</td>
           </tr>
         </table>
 
-        <table class="ledger-table">
+        <table class="table-ledger">
           <thead>
             <tr>
-              <th style="width:7mm;">No</th>
-              <th class="col-date">Date</th>
-              <th class="col-move">Good Moving</th>
-              <th class="col-mut">Mutasi</th>
-              <th class="col-stock">Stock</th>
-              <th class="col-note">Note</th>
+              <th class="c-no">No</th>
+              <th class="c-date">Date</th>
+              <th class="c-move">Good Moving</th>
+              <th class="c-mut">Mutasi</th>
+              <th class="c-stock">Stock</th>
+              <th class="c-note">Note</th>
             </tr>
           </thead>
           <tbody>
@@ -541,77 +620,103 @@
     }
 
     function generateLedgerRows(count) {
-      let html = '';
+      let rowsHtml = '';
       for (let i = 1; i <= count; i++) {
-        html += `<tr>
-          <td>${i}</td>
-          <td class="col-date"></td>
-          <td class="col-move"></td>
-          <td class="col-mut"></td>
-          <td class="col-stock"></td>
-          <td class="col-note"></td>
+        rowsHtml += `<tr>
+          <td class="c-no">${i}</td>
+          <td class="c-date"></td>
+          <td class="c-move"></td>
+          <td class="c-mut"></td>
+          <td class="c-stock"></td>
+          <td class="c-note"></td>
         </tr>`;
       }
-      return html;
+      return rowsHtml;
     }
 
-    // Render 2 Group Cards on A4 page (Slot 1 active, Slot 2 blank duplicate)
+    // Render 2 Group Cards on A4 page (Slot 1 active group, Slot 2 blank duplicate group)
     function renderGroupCardPage(groupData) {
+      currentGroupData = groupData;
+      applyGroupLayout();
+    }
+
+    function applyGroupLayout() {
+      const layout = document.getElementById('groupLayoutMode') ? document.getElementById('groupLayoutMode').value : '1plus1';
       const container = document.getElementById('groupView');
       container.innerHTML = '';
 
-      const groups = [
-        groupData || { isBlank: true },
-        { isBlank: true }
-      ];
+      let groups = [];
+      if (layout === '2same') {
+        groups = [
+          currentGroupData || { isBlank: true },
+          currentGroupData || { isBlank: true }
+        ];
+      } else {
+        // Default Tcard: 1 active group + 1 blank template group card
+        groups = [
+          currentGroupData || { isBlank: true },
+          { isBlank: true }
+        ];
+      }
 
       groups.forEach((g, idx) => {
-        const card = createGroupCardElement(g, idx);
-        container.appendChild(card);
+        const cardElem = createGroupCardElement(g, idx);
+        container.appendChild(cardElem);
       });
     }
 
     function createGroupCardElement(group, idx) {
       const div = document.createElement('div');
-      div.className = 'card-group';
+      div.className = 'card-group-box';
 
-      const logoHtml = logoDataUri ? `<img src="${logoDataUri}" class="logo-img" alt="Logo">` : `<div style="font-weight:800; font-size:11pt; color:#1A237E;">GUDANG LOGO</div>`;
+      const logoHtml = logoDataUri
+        ? `<img src="${logoDataUri}" class="logo-img" alt="Logo">`
+        : `<div style="font-weight:900; font-size:10.5pt; color:#1A237E;">LOGOKPM</div>`;
+
       const qrPayload = encodeURIComponent(group.isBlank ? 'GROUP-BLANK' : `GROUP:${group.groupName}`);
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${qrPayload}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${qrPayload}`;
 
       div.innerHTML = `
-        <div class="corner-guide-left"></div>
-        <div class="corner-guide-right"></div>
+        <!-- Diagonal Corner Cut Guidelines (45deg cutting line matching Tcard) -->
+        <svg class="cut-line cut-line-tl" viewBox="0 0 10 10" title="diagonal upr to btl">
+          <line x1="0" y1="10" x2="10" y2="0" stroke="#616161" stroke-dasharray="2,1.5" stroke-width="0.8"/>
+        </svg>
+        <svg class="cut-line cut-line-tr" viewBox="0 0 10 10" title="diagonal upl to btr">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="#616161" stroke-dasharray="2,1.5" stroke-width="0.8"/>
+        </svg>
 
-        <div class="card-header">
-          <div class="logo-box">${logoHtml}</div>
-          <div class="hole-punch" title="Hole">⚪</div>
-          <div class="qr-box">
-            <img src="${qrUrl}" class="qr-img" alt="QR">
+        <div class="single-header">
+          <div class="logo-container">${logoHtml}</div>
+          <div class="hole-indicator" title="Hole Punch Guide">
+            <div class="hole-circle"></div>
+            <span class="hole-lbl">HOLE</span>
+          </div>
+          <div class="qr-container">
+            ${group.isBlank ? '<div style="font-size:8pt; color:#9e9e9e; font-style:italic;">[ QR CODE ]</div>' : `<img src="${qrUrl}" class="qr-img" alt="QR">`}
           </div>
         </div>
 
-        <div class="card-title" style="font-size:13pt;">KARTU STOCK MATERIAL Group</div>
+        <div class="main-card-title" style="font-size:12.5pt;">KARTU STOCK MATERIAL Group</div>
 
-        <table class="meta-table" style="font-size:9.5pt; margin-bottom:3mm;">
+        <table class="meta-fields" style="font-size:9.5pt; margin-bottom:2.5mm;">
           <tr>
-            <td class="label" style="width:30mm;">Kode Group</td>
-            <td class="val">: ${group.isBlank ? '..................................................' : (group.groupName || '-')}</td>
+            <td class="lbl" style="width:30mm;">Kode Group :</td>
+            <td class="txt">${group.isBlank ? '..................................................' : (group.groupName || '-')}</td>
           </tr>
           <tr>
-            <td class="label" style="width:30mm;">Deskripsi</td>
-            <td class="val">: ${group.isBlank ? '..................................................' : (group.deskripsi || '-')}</td>
+            <td class="lbl" style="width:30mm;">Deskription :</td>
+            <td class="txt">${group.isBlank ? '..................................................' : (group.deskripsi || '-')}</td>
           </tr>
         </table>
 
-        <table class="group-ledger-table">
+        <table class="table-group-ledger">
           <thead>
             <tr>
-              <th class="gcol-no">No</th>
-              <th class="gcol-komat">Komat</th>
-              <th class="gcol-name">Name</th>
-              <th class="gcol-mut">Mutasi</th>
-              <th class="gcol-stock">Stock</th>
+              <th class="gc-no">No</th>
+              <th class="gc-komat">Komat</th>
+              <th class="gc-name">Name</th>
+              <th class="gc-mut">Mutasi</th>
+              <th class="gc-stock">Stock</th>
             </tr>
           </thead>
           <tbody>
@@ -624,28 +729,28 @@
     }
 
     function generateGroupRows(items, totalRows) {
-      let html = '';
+      let rowsHtml = '';
       for (let i = 0; i < totalRows; i++) {
         const item = items[i];
         if (item) {
-          html += `<tr>
-            <td class="gcol-no">${i + 1}</td>
-            <td class="gcol-komat">${item.komat}</td>
-            <td class="gcol-name">${item.name}</td>
-            <td class="gcol-mut"></td>
-            <td class="gcol-stock">${item.qty} ${item.uom}</td>
+          rowsHtml += `<tr>
+            <td class="gc-no">${i + 1}</td>
+            <td class="gc-komat">${item.komat}</td>
+            <td class="gc-name">${item.name}</td>
+            <td class="gc-mut"></td>
+            <td class="gc-stock">${item.qty} ${item.uom}</td>
           </tr>`;
         } else {
-          html += `<tr>
-            <td class="gcol-no">${i + 1}</td>
-            <td class="gcol-komat"></td>
-            <td class="gcol-name"></td>
-            <td class="gcol-mut"></td>
-            <td class="gcol-stock"></td>
+          rowsHtml += `<tr>
+            <td class="gc-no">${i + 1}</td>
+            <td class="gc-komat"></td>
+            <td class="gc-name"></td>
+            <td class="gc-mut"></td>
+            <td class="gc-stock"></td>
           </tr>`;
         }
       }
-      return html;
+      return rowsHtml;
     }
   </script>
 </body>

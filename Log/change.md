@@ -106,6 +106,39 @@ All notable changes and architectural transitions are documented in this file.
   - Successfully pushed 9 files to Google Apps Script via `@google/clasp push --force`.
   - Created immutable Version 4 and redeployed active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@4).
 
+---
+
+## [GAS v2.2: Exact Tcard Physical Reference Alignment] - 2026-09-17
+### Completed
+- **Pixel-Perfect Tcard Implementation (`GAS/PrintCardModal.html`)**:
+  - **Single Item Card (`KARTU STOCK MATERIAL`)**:
+    - Layout: 4 cards per A4 page (2×2 grid, 96×138mm boxes with 1.5mm cutting gap).
+    - Chamfered Corner Cut Guides: 45° SVG dashed diagonal guides (`diagonal upr to btl` on top-left, `diagonal upl to btr` on top-right) for rack hanging trims.
+    - Hole Punch Center Mark: Precise 6mm dashed circle guide with `HOLE` label.
+    - Barcode: Compact CODE128 vector barcode via JsBarcode with Roboto Mono font.
+    - Exact Meta Labels: `Kode Material :`, `Deskription :`, `Location :`.
+    - Ledger Table: 15 rows (`No`, `Date`, `Good Moving`, `Mutasi`, `Stock`, `Note`) with `#E0E0E0` bold headers and solid borders.
+    - Multi-mode Layout Selector:
+      1. `1 Kartu + 3 Blank Template (Tcard Default)`: Prints selected item in slot 1 and fills slots 2–4 with blank writable templates.
+      2. `4x Duplikat Material`: Fills all 4 slots with the selected material.
+      3. `4 Material Berurutan`: Prints 4 sequential items starting from the selected material.
+  - **Group Card (`KARTU STOCK MATERIAL Group`)**:
+    - Layout: Half A4 (A5 size, 2 cards per A4 page stacked vertically).
+    - Top Header: Base64 Logo + Center Hole punch guide + Group QR code (`GROUP:<groupName>`).
+    - Exact Meta Labels: `Kode Group :`, `Deskription :`.
+    - Ledger Table: 15 material rows (`No`, `Komat`, `Name`, `Mutasi`, `Stock`).
+    - Multi-mode Layout Selector:
+      1. `1 Group + 1 Blank Template (Tcard Default)`: Prints selected group in slot 1 and a blank group template in slot 2.
+      2. `2x Duplikat Group`: Fills both slots with the selected group card.
+- **Concealed IT Account & Dynamic User Management**:
+  - Automatically hides IIT/IT rows in Google Sheets via `sheet.hideRows()`.
+  - Filters out IIT/IT accounts completely from the User ID Badge dialog (`PrintUserQR.html`).
+  - Enables dynamic user addition and single-account badge selection.
+- **Deployment**:
+  - Pushed all 9 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 6 and redeployed active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@6).
+
+
 
 
 
