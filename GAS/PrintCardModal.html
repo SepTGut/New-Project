@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Cetak Kartu Stok Material</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 8mm;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: #eaedf2;
+      font-family: 'Plus Jakarta Sans', Arial, sans-serif;
+      color: #1a1a1a;
+      font-size: 11px;
+    }
+
+    /* Screen Toolbar */
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: #1A237E;
+      color: #ffffff;
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toolbar select, .toolbar button {
+      font-family: inherit;
+      font-size: 12px;
+      border-radius: 6px;
+      padding: 6px 12px;
+      border: none;
+      outline: none;
+    }
+
+    .toolbar select {
+      background: #ffffff;
+      color: #1a1a1a;
+      max-width: 260px;
+      font-weight: 500;
+    }
+
+    .btn-print {
+      background: #00E676;
+      color: #004D40;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-print:hover {
+      background: #69F0AE;
+      transform: translateY(-1px);
+    }
+
+    .btn-tab {
+      background: rgba(255,255,255,0.15);
+      color: #ffffff;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn-tab.active {
+      background: #ffffff;
+      color: #1A237E;
+    }
+
+    /* A4 Paper Sheet Preview */
+    .a4-page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 15px auto;
+      background: #ffffff;
+      padding: 6mm;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      position: relative;
+    }
+
+    /* ========================================================
+       SINGLE ITEM CARDS: 4 CARDS PER A4 (2x2 GRID, 90x110mm)
+       ======================================================== */
+    .grid-4 {
+      display: grid;
+      grid-template-columns: 96mm 96mm;
+      grid-template-rows: 138mm 138mm;
+      gap: 4mm;
+      justify-content: center;
+      align-content: center;
+    }
+
+    .card-single {
+      width: 96mm;
+      height: 138mm;
+      border: 1.5px solid #111111;
+      border-radius: 4px;
+      padding: 3mm;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: #ffffff;
+    }
+
+    /* Cut corner guidelines */
+    .corner-guide-left {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 6mm;
+      height: 6mm;
+      border-right: 1px dashed #9e9e9e;
+      border-bottom: 1px dashed #9e9e9e;
+    }
+    .corner-guide-right {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 6mm;
+      height: 6mm;
+      border-left: 1px dashed #9e9e9e;
+      border-bottom: 1px dashed #9e9e9e;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1.5px solid #111111;
+      padding-bottom: 2mm;
+      margin-bottom: 2mm;
+      height: 18mm;
+    }
+
+    .logo-box {
+      width: 22mm;
+      height: 16mm;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .logo-img {
+      max-width: 100%;
+      max-height: 16mm;
+      object-fit: contain;
+    }
+
+    .hole-punch {
+      width: 6mm;
+      height: 6mm;
+      border: 1.5px dashed #424242;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: #757575;
+      margin: 0 auto;
+    }
+
+    .barcode-box {
+      width: 36mm;
+      height: 16mm;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .barcode-svg {
+      width: 100%;
+      max-height: 13mm;
+    }
+
+    .card-title {
+      text-align: center;
+      font-size: 11pt;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin: 1mm 0 2mm 0;
+      color: #000000;
+    }
+
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 2mm;
+      font-size: 8.5pt;
+    }
+    .meta-table td {
+      padding: 1mm 0;
+      vertical-align: top;
+    }
+    .meta-table td.label {
+      width: 25mm;
+      font-weight: 700;
+      color: #212121;
+    }
+    .meta-table td.val {
+      font-weight: 600;
+      color: #000000;
+    }
+
+    /* 15 Rows Ledger Table */
+    .ledger-table {
+      width: 100%;
+      border-collapse: collapse;
+      flex-grow: 1;
+      font-size: 7.5pt;
+    }
+    .ledger-table th, .ledger-table td {
+      border: 1px solid #111111;
+      padding: 1.2mm 1mm;
+      text-align: center;
+    }
+    .ledger-table th {
+      background: #f0f0f0;
+      font-weight: 700;
+      font-size: 7pt;
+      text-transform: uppercase;
+    }
+    .ledger-table td.col-date { width: 14mm; }
+    .ledger-table td.col-move { width: 18mm; }
+    .ledger-table td.col-mut { width: 12mm; }
+    .ledger-table td.col-stock { width: 13mm; font-weight: 700; }
+    .ledger-table td.col-note { width: 22mm; text-align: left; }
+
+    /* ========================================================
+       GROUP CARDS: 2 CARDS PER A4 (HALF A4 / A5 STACKED)
+       ======================================================== */
+    .grid-2 {
+      display: flex;
+      flex-direction: column;
+      gap: 6mm;
+      height: 100%;
+    }
+
+    .card-group {
+      width: 196mm;
+      height: 138mm;
+      border: 1.5px solid #111111;
+      border-radius: 4px;
+      padding: 4mm;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: #ffffff;
+    }
+
+    .card-group .card-header {
+      height: 22mm;
+    }
+    .card-group .logo-box {
+      width: 35mm;
+      height: 20mm;
+    }
+    .card-group .qr-box {
+      width: 22mm;
+      height: 22mm;
+    }
+    .card-group .qr-img {
+      width: 22mm;
+      height: 22mm;
+      object-fit: contain;
+    }
+
+    .group-ledger-table {
+      width: 100%;
+      border-collapse: collapse;
+      flex-grow: 1;
+      font-size: 8.5pt;
+    }
+    .group-ledger-table th, .group-ledger-table td {
+      border: 1px solid #111111;
+      padding: 1.6mm 2mm;
+      text-align: center;
+    }
+    .group-ledger-table th {
+      background: #f0f0f0;
+      font-weight: 700;
+      font-size: 8pt;
+      text-transform: uppercase;
+    }
+    .group-ledger-table td.gcol-no { width: 10mm; }
+    .group-ledger-table td.gcol-komat { width: 38mm; font-weight: 700; }
+    .group-ledger-table td.gcol-name { width: 75mm; text-align: left; }
+    .group-ledger-table td.gcol-mut { width: 25mm; }
+    .group-ledger-table td.gcol-stock { width: 28mm; font-weight: 700; }
+
+    /* Print Styles */
+    @media print {
+      body {
+        background: #ffffff;
+      }
+      .toolbar {
+        display: none !important;
+      }
+      .a4-page {
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        width: 100%;
+        min-height: 100%;
+        page-break-after: always;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <button id="tabSingle" class="btn-tab active" onclick="switchMode('single')">🏷️ Kartu Material (4/A4)</button>
+      <button id="tabGroup" class="btn-tab" onclick="switchMode('group')">📦 Kartu Group (2/A4)</button>
+    </div>
+
+    <!-- Selectors -->
+    <div class="toolbar-group" id="singleControls">
+      <label style="font-weight:600;">Pilih Material:</label>
+      <select id="materialSelect" onchange="loadSelectedMaterial()">
+        <option value="">-- Memuat Material... --</option>
+      </select>
+    </div>
+
+    <div class="toolbar-group" id="groupControls" style="display:none;">
+      <label style="font-weight:600;">Pilih Group:</label>
+      <select id="groupSelect" onchange="loadSelectedGroup()">
+        <option value="">-- Memuat Group... --</option>
+      </select>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="btn-print" onclick="window.print()">🖨️ Cetak A4 (Print)</button>
+      <button onclick="google.script.host.close()" style="background:#455A64; color:#fff; cursor:pointer;">✕ Tutup</button>
+    </div>
+  </div>
+
+  <!-- A4 Page Container -->
+  <div class="a4-page">
+    
+    <!-- SINGLE ITEM VIEW: 4 CARDS (2x2 GRID) -->
+    <div id="singleView" class="grid-4">
+      <!-- 4 Cards will be generated dynamically -->
+    </div>
+
+    <!-- GROUP VIEW: 2 CARDS (HALF A4) -->
+    <div id="groupView" class="grid-2" style="display:none;">
+      <!-- 2 Cards will be generated dynamically -->
+    </div>
+
+  </div>
+
+  <script>
+    let currentMode = 'single';
+    let materialsList = [];
+    let groupsList = [];
+    let logoDataUri = '';
+
+    // Initialize data from server
+    window.onload = function() {
+      google.script.run.withSuccessHandler(function(data) {
+        materialsList = data.materials || [];
+        groupsList = data.groups || [];
+        logoDataUri = data.logoUri || '';
+
+        populateMaterialDropdown();
+        populateGroupDropdown();
+
+        // Default: render active item
+        if (materialsList.length > 0) {
+          renderSingleCardPage(materialsList[0]);
+        }
+      }).getPrintModalInitialData();
+    };
+
+    function switchMode(mode) {
+      currentMode = mode;
+      document.getElementById('tabSingle').className = (mode === 'single') ? 'btn-tab active' : 'btn-tab';
+      document.getElementById('tabGroup').className = (mode === 'group') ? 'btn-tab active' : 'btn-tab';
+      document.getElementById('singleControls').style.display = (mode === 'single') ? 'flex' : 'none';
+      document.getElementById('groupControls').style.display = (mode === 'group') ? 'flex' : 'none';
+      document.getElementById('singleView').style.display = (mode === 'single') ? 'grid' : 'none';
+      document.getElementById('groupView').style.display = (mode === 'group') ? 'flex' : 'none';
+
+      if (mode === 'group' && groupsList.length > 0) {
+        loadSelectedGroup();
+      } else if (mode === 'single' && materialsList.length > 0) {
+        loadSelectedMaterial();
+      }
+    }
+
+    function populateMaterialDropdown() {
+      const select = document.getElementById('materialSelect');
+      select.innerHTML = '';
+      materialsList.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.kodeMaterial;
+        opt.textContent = `${m.kodeMaterial} - ${m.namaBarang} (Rak: ${m.lokasiRak || '-'})`;
+        select.appendChild(opt);
+      });
+    }
+
+    function populateGroupDropdown() {
+      const select = document.getElementById('groupSelect');
+      select.innerHTML = '';
+      groupsList.forEach(g => {
+        const opt = document.createElement('option');
+        opt.value = g.name;
+        opt.textContent = `Group ${g.name} (${g.count} items)`;
+        select.appendChild(opt);
+      });
+    }
+
+    function loadSelectedMaterial() {
+      const code = document.getElementById('materialSelect').value;
+      google.script.run.withSuccessHandler(function(itemData) {
+        renderSingleCardPage(itemData);
+      }).getItemCardData(code);
+    }
+
+    function loadSelectedGroup() {
+      const gname = document.getElementById('groupSelect').value;
+      google.script.run.withSuccessHandler(function(groupData) {
+        renderGroupCardPage(groupData);
+      }).getGroupCardData(gname);
+    }
+
+    // Render 4 Single Cards on A4 page (Slot 1 active, Slots 2-4 blank duplicates)
+    function renderSingleCardPage(activeItem) {
+      const container = document.getElementById('singleView');
+      container.innerHTML = '';
+
+      const items = [
+        activeItem || { isBlank: true },
+        { isBlank: true },
+        { isBlank: true },
+        { isBlank: true }
+      ];
+
+      items.forEach((item, idx) => {
+        const card = createSingleCardElement(item, idx);
+        container.appendChild(card);
+
+        // Render Barcode
+        const svgId = `barcode-${idx}`;
+        const codeVal = item.isBlank ? 'BLANK-ITEM' : (item.kodeMaterial || 'NO-CODE');
+        try {
+          JsBarcode(`#${svgId}`, codeVal, {
+            format: "CODE128",
+            width: 1.2,
+            height: 35,
+            displayValue: !item.isBlank,
+            fontSize: 9,
+            margin: 0
+          });
+        } catch (e) {
+          console.warn('Barcode error', e);
+        }
+      });
+    }
+
+    function createSingleCardElement(item, idx) {
+      const div = document.createElement('div');
+      div.className = 'card-single';
+
+      const logoHtml = logoDataUri ? `<img src="${logoDataUri}" class="logo-img" alt="Logo">` : `<div style="font-weight:800; font-size:9pt; color:#1A237E;">GUDANG</div>`;
+
+      div.innerHTML = `
+        <div class="corner-guide-left" title="diagonal upr to btl"></div>
+        <div class="corner-guide-right" title="diagonal upl to btr"></div>
+
+        <div class="card-header">
+          <div class="logo-box">${logoHtml}</div>
+          <div class="hole-punch" title="Hole">⚪</div>
+          <div class="barcode-box">
+            <svg id="barcode-${idx}" class="barcode-svg"></svg>
+          </div>
+        </div>
+
+        <div class="card-title">KARTU STOCK MATERIAL</div>
+
+        <table class="meta-table">
+          <tr>
+            <td class="label">Kode Material</td>
+            <td class="val">: ${item.isBlank ? '..............................' : (item.kodeMaterial || '-')}</td>
+          </tr>
+          <tr>
+            <td class="label">Deskripsi</td>
+            <td class="val">: ${item.isBlank ? '..............................' : (item.namaBarang || '-')}</td>
+          </tr>
+          <tr>
+            <td class="label">Location</td>
+            <td class="val">: ${item.isBlank ? '..............................' : (item.lokasiRak || '-')}</td>
+          </tr>
+        </table>
+
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th style="width:7mm;">No</th>
+              <th class="col-date">Date</th>
+              <th class="col-move">Good Moving</th>
+              <th class="col-mut">Mutasi</th>
+              <th class="col-stock">Stock</th>
+              <th class="col-note">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${generateLedgerRows(15)}
+          </tbody>
+        </table>
+      `;
+
+      return div;
+    }
+
+    function generateLedgerRows(count) {
+      let html = '';
+      for (let i = 1; i <= count; i++) {
+        html += `<tr>
+          <td>${i}</td>
+          <td class="col-date"></td>
+          <td class="col-move"></td>
+          <td class="col-mut"></td>
+          <td class="col-stock"></td>
+          <td class="col-note"></td>
+        </tr>`;
+      }
+      return html;
+    }
+
+    // Render 2 Group Cards on A4 page (Slot 1 active, Slot 2 blank duplicate)
+    function renderGroupCardPage(groupData) {
+      const container = document.getElementById('groupView');
+      container.innerHTML = '';
+
+      const groups = [
+        groupData || { isBlank: true },
+        { isBlank: true }
+      ];
+
+      groups.forEach((g, idx) => {
+        const card = createGroupCardElement(g, idx);
+        container.appendChild(card);
+      });
+    }
+
+    function createGroupCardElement(group, idx) {
+      const div = document.createElement('div');
+      div.className = 'card-group';
+
+      const logoHtml = logoDataUri ? `<img src="${logoDataUri}" class="logo-img" alt="Logo">` : `<div style="font-weight:800; font-size:11pt; color:#1A237E;">GUDANG LOGO</div>`;
+      const qrPayload = encodeURIComponent(group.isBlank ? 'GROUP-BLANK' : `GROUP:${group.groupName}`);
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${qrPayload}`;
+
+      div.innerHTML = `
+        <div class="corner-guide-left"></div>
+        <div class="corner-guide-right"></div>
+
+        <div class="card-header">
+          <div class="logo-box">${logoHtml}</div>
+          <div class="hole-punch" title="Hole">⚪</div>
+          <div class="qr-box">
+            <img src="${qrUrl}" class="qr-img" alt="QR">
+          </div>
+        </div>
+
+        <div class="card-title" style="font-size:13pt;">KARTU STOCK MATERIAL Group</div>
+
+        <table class="meta-table" style="font-size:9.5pt; margin-bottom:3mm;">
+          <tr>
+            <td class="label" style="width:30mm;">Kode Group</td>
+            <td class="val">: ${group.isBlank ? '..................................................' : (group.groupName || '-')}</td>
+          </tr>
+          <tr>
+            <td class="label" style="width:30mm;">Deskripsi</td>
+            <td class="val">: ${group.isBlank ? '..................................................' : (group.deskripsi || '-')}</td>
+          </tr>
+        </table>
+
+        <table class="group-ledger-table">
+          <thead>
+            <tr>
+              <th class="gcol-no">No</th>
+              <th class="gcol-komat">Komat</th>
+              <th class="gcol-name">Name</th>
+              <th class="gcol-mut">Mutasi</th>
+              <th class="gcol-stock">Stock</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${generateGroupRows(group.items || [], 15)}
+          </tbody>
+        </table>
+      `;
+
+      return div;
+    }
+
+    function generateGroupRows(items, totalRows) {
+      let html = '';
+      for (let i = 0; i < totalRows; i++) {
+        const item = items[i];
+        if (item) {
+          html += `<tr>
+            <td class="gcol-no">${i + 1}</td>
+            <td class="gcol-komat">${item.komat}</td>
+            <td class="gcol-name">${item.name}</td>
+            <td class="gcol-mut"></td>
+            <td class="gcol-stock">${item.qty} ${item.uom}</td>
+          </tr>`;
+        } else {
+          html += `<tr>
+            <td class="gcol-no">${i + 1}</td>
+            <td class="gcol-komat"></td>
+            <td class="gcol-name"></td>
+            <td class="gcol-mut"></td>
+            <td class="gcol-stock"></td>
+          </tr>`;
+        }
+      }
+      return html;
+    }
+  </script>
+</body>
+</html>

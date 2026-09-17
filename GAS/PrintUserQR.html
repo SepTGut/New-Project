@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Cetak Kartu QR Login Pengguna</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=IBM+Plex+Mono:wght@600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    @page {
+      size: A4 portrait;
+      margin: 10mm;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f0f2f5;
+      font-family: 'Plus Jakarta Sans', Arial, sans-serif;
+      color: #1a1a1a;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: #1A237E;
+      color: #ffffff;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+
+    .btn-print {
+      background: #00E676;
+      color: #004D40;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .btn-close {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .a4-page {
+      width: 210mm;
+      margin: 15px auto;
+      background: #ffffff;
+      padding: 10mm;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      display: grid;
+      grid-template-columns: repeat(2, 90mm);
+      gap: 10mm;
+      justify-content: center;
+    }
+
+    .badge-card {
+      width: 90mm;
+      height: 55mm;
+      border: 1.5px solid #212121;
+      border-radius: 8px;
+      padding: 3mm 4mm;
+      display: flex;
+      gap: 3mm;
+      background: #ffffff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .badge-left {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .badge-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-logo {
+      height: 12mm;
+      max-width: 24mm;
+      object-fit: contain;
+    }
+
+    .badge-corp {
+      font-size: 8pt;
+      font-weight: 800;
+      color: #1A237E;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .badge-user-info {
+      margin: 2mm 0;
+    }
+
+    .badge-name {
+      font-size: 10.5pt;
+      font-weight: 800;
+      color: #000000;
+      line-height: 1.2;
+    }
+
+    .badge-email {
+      font-size: 7.5pt;
+      color: #616161;
+      margin-top: 1mm;
+    }
+
+    .badge-username {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8pt;
+      color: #424242;
+      margin-top: 1mm;
+    }
+
+    .badge-role {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      width: fit-content;
+    }
+
+    .role-admin { background: #E8EAF6; color: #1A237E; border: 1px solid #C5CAE9; }
+    .role-user { background: #E8F5E9; color: #1B5E20; border: 1px solid #C8E6C9; }
+    .role-iit { background: #F3E5F5; color: #4A148C; border: 1px solid #E1BEE7; }
+
+    .badge-right {
+      width: 28mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-left: 1px dashed #BDBDBD;
+      padding-left: 3mm;
+    }
+
+    .qr-img {
+      width: 26mm;
+      height: 26mm;
+      object-fit: contain;
+    }
+
+    .scan-hint {
+      font-size: 6pt;
+      font-weight: 700;
+      text-align: center;
+      color: #757575;
+      margin-top: 1.5mm;
+      text-transform: uppercase;
+    }
+
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none !important; }
+      .a4-page {
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <div style="font-weight:700; font-size:14px;">🪪 Kartu QR Login Pengguna (Admin, User, IIT)</div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn-print" onclick="window.print()">🖨️ Cetak ID Badge (Print)</button>
+      <button class="btn-close" onclick="google.script.host.close()">✕ Tutup</button>
+    </div>
+  </div>
+
+  <div class="a4-page" id="badgeContainer">
+    <!-- User Badges will be generated here -->
+  </div>
+
+  <script>
+    window.onload = function() {
+      google.script.run.withSuccessHandler(function(data) {
+        const users = data.users || [];
+        const logo = data.logoUri || '';
+        const container = document.getElementById('badgeContainer');
+        container.innerHTML = '';
+
+        users.forEach(u => {
+          const roleClass = (u.role.toLowerCase() === 'admin') ? 'role-admin' :
+                            (u.role.toLowerCase() === 'iit') ? 'role-iit' : 'role-user';
+
+          const card = document.createElement('div');
+          card.className = 'badge-card';
+          card.innerHTML = `
+            <div class="badge-left">
+              <div class="badge-header">
+                ${logo ? `<img src="${logo}" class="badge-logo" alt="Logo">` : ''}
+                <div class="badge-corp">SMART VISUAL<br>WAREHOUSE</div>
+              </div>
+              <div class="badge-user-info">
+                <div class="badge-name">${u.name}</div>
+                <div class="badge-username">@${u.username}</div>
+                <div class="badge-email">${u.email || '-'}</div>
+              </div>
+              <div>
+                <span class="badge-role ${roleClass}">${u.role}</span>
+              </div>
+            </div>
+            <div class="badge-right">
+              <img src="${u.qrUrl}" class="qr-img" alt="QR Code">
+              <div class="scan-hint">Scan to Login</div>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+      }).getUserQRModalData();
+    };
+  </script>
+</body>
+</html>
