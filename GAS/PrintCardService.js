@@ -5,48 +5,31 @@
 
 const PrintCardService = {
   /**
-   * Retrieves author/company logo safely:
-   * 1. Checks if Tcard sheet has an embedded image placed on it
-   * 2. Uses the official REKA INKA Group (PT Rekaindo Global Jasa) logo from KPMscript
-   * 3. Fallback to Google Drive file ID
+   * Retrieves the target logo (Drive ID: 1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT)
+   * 1. Priority 1: High-res embedded Base64 data URI from LogoUri.js (instant, offline, zero latency)
+   * 2. Priority 2: Direct DriveApp extraction
+   * 3. Priority 3: Direct Google Drive UC URL
    */
   getLogoDataUri: function() {
-    // 1. Check if Tcard sheet has an embedded image directly placed by the user
+    // 1. Instant high-res embedded Base64 URI for 1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT
+    if (typeof TARGET_LOGO_DATA_URI !== 'undefined' && TARGET_LOGO_DATA_URI) {
+      return TARGET_LOGO_DATA_URI;
+    }
+
+    // 2. DriveApp extraction
+    const logoId = CONFIG.LOGO_ID || '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT';
     try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const tcardSheet = ss.getSheetByName(CONFIG.SHEET_TCARD);
-      if (tcardSheet) {
-        const images = tcardSheet.getImages();
-        if (images && images.length > 0) {
-          const blob = images[0].getBlob();
-          const contentType = blob.getContentType();
-          const base64 = Utilities.base64Encode(blob.getBytes());
-          return 'data:' + contentType + ';base64,' + base64;
-        }
-      }
-    } catch (e) {
-      Logger.log('Tcard sheet image check warning: ' + e.message);
+      const file = DriveApp.getFileById(logoId);
+      const blob = file.getBlob();
+      const contentType = blob.getContentType();
+      const base64 = Utilities.base64Encode(blob.getBytes());
+      return 'data:' + contentType + ';base64,' + base64;
+    } catch (err) {
+      Logger.log('getLogoDataUri DriveApp warning: ' + err.message);
     }
 
-    // 2. Official REKA INKA Group company logo (matching KPMscript)
-    if (typeof REKAINDO_LOGO_DATA_URI !== 'undefined' && REKAINDO_LOGO_DATA_URI) {
-      return REKAINDO_LOGO_DATA_URI;
-    }
-
-    // 3. Fallback to Drive LOGO_ID if configured
-    const logoId = CONFIG.LOGO_ID;
-    if (logoId) {
-      try {
-        const file = DriveApp.getFileById(logoId);
-        const blob = file.getBlob();
-        const contentType = blob.getContentType();
-        const base64 = Utilities.base64Encode(blob.getBytes());
-        return 'data:' + contentType + ';base64,' + base64;
-      } catch (err) {
-        Logger.log('getLogoDataUri warning: ' + err.message);
-      }
-    }
-    return '';
+    // 3. Fallback direct Drive view URL
+    return 'https://drive.google.com/uc?id=' + logoId;
   },
 
   /**

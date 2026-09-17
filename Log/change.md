@@ -158,6 +158,20 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 7 and redeployed active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@7).
 
+---
+
+## [GAS v2.4: Locked Logo 1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT] - 2026-09-17
+### Completed
+- **Locked Target Logo to Drive ID `1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT`**:
+  - Verified and confirmed user requirement to use Drive ID `1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT`.
+  - Embedded as high-resolution optimized Base64 data URI in `GAS/LogoUri.js` (`TARGET_LOGO_DATA_URI`).
+  - Added direct URL fallback `<img src="https://drive.google.com/uc?id=1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT">` in `PrintCardModal.html` and `PrintUserQR.html` so it always displays without ever falling back to blank or text.
+  - Adjusted logo container dimensions (25×16 mm on Single Card, 32×20 mm on Group Card) for portrait shield layout.
+- **Deployment**:
+  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 8 and redeployed active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@8).
+
+
 
 
 
