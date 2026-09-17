@@ -1,6 +1,7 @@
 /**
  * Automation & Event Triggers (Automation.js)
- * Handles auto No incrementing, auto Link Foto Drive detection, and Hyperlink formatting.
+ * Handles auto No incrementing, auto Link Foto Drive detection,
+ * Hyperlink formatting, and dynamic User account management.
  */
 
 /**
@@ -9,8 +10,25 @@
 function onEdit(e) {
   if (!e || !e.range) return;
   const sheet = e.range.getSheet();
-  if (sheet.getName() !== CONFIG.SHEET_PICTFINDER) return;
+  const sheetName = sheet.getName();
 
+  // Route 1: Edits on PictFinder
+  if (sheetName === CONFIG.SHEET_PICTFINDER) {
+    handlePictFinderEdit(e, sheet);
+    return;
+  }
+
+  // Route 2: Edits on User sheet (add more or change just one account)
+  if (sheetName === CONFIG.SHEET_USER) {
+    handleUserEdit(e, sheet);
+    return;
+  }
+}
+
+/**
+ * Handles automated behavior on PictFinder sheet
+ */
+function handlePictFinderEdit(e, sheet) {
   const row = e.range.getRow();
   const col = e.range.getColumn();
 
@@ -50,7 +68,47 @@ function onEdit(e) {
       }
     }
   } catch (err) {
-    Logger.log('onEdit automation error: ' + err.message);
+    Logger.log('handlePictFinderEdit error: ' + err.message);
+  }
+}
+
+/**
+ * Handles dynamic edits on the User sheet
+ * Auto-creates No, updates QR Code formula, and hides IIT/IT accounts.
+ */
+function handleUserEdit(e, sheet) {
+  const row = e.range.getRow();
+  if (row < 2) return;
+
+  try {
+    // 1. Auto No
+    const noCell = sheet.getRange(row, 1);
+    if (!noCell.getValue()) {
+      noCell.setValue(row - 1);
+    }
+
+    // 2. Read current row values
+    const rowVals = sheet.getRange(row, 1, 1, 7).getValues()[0];
+    const username = String(rowVals[2] || '').trim();
+    const role = String(rowVals[3] || 'User').trim();
+    const pass = String(rowVals[5] || '').trim();
+
+    if (username) {
+      // Auto-generate / update QR code formula
+      const qrPayload = JSON.stringify({ u: username, p: pass, role: role });
+      const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" & ENCODEURL("' + qrPayload.replace(/"/g, '""') + '"))';
+      sheet.getRange(row, 8).setFormula(qrFormula);
+      sheet.setRowHeight(row, 65);
+
+      // 3. Auto-hide IT / IIT account row
+      if (role.toLowerCase() === 'iit' || role.toLowerCase() === 'it') {
+        sheet.hideRows(row);
+      } else {
+        sheet.showRows(row);
+      }
+    }
+  } catch (err) {
+    Logger.log('handleUserEdit error: ' + err.message);
   }
 }
 
@@ -61,7 +119,6 @@ function formatToDirectDriveUrl(input) {
   if (!input) return '';
   const str = String(input).trim();
 
-  // If input is already an ID (alphanumeric with - and _)
   let fileId = '';
   const match1 = str.match(/\/d\/([a-zA-Z0-9_-]+)/);
   const match2 = str.match(/id=([a-zA-Z0-9_-]+)/);
@@ -93,7 +150,6 @@ function findDriveImageUrlByCode(kodeMaterial) {
     while (files.hasNext()) {
       const file = files.next();
       const name = file.getName().toLowerCase();
-      // Match base name without extension
       const baseName = name.replace(/\.[^/.]+$/, '').trim();
       if (baseName === cleanCode) {
         return 'https://drive.google.com/uc?id=' + file.getId();
@@ -133,20 +189,17 @@ function syncNoAndLinks() {
     const rowIdx = CONFIG.DATA_START_ROW + i;
     const rowVals = rangeData[i];
 
-    // Check if row has any content
     const hasContent = rowVals.slice(1, 8).some(function(v) {
       return v !== '' && v !== null && v !== undefined;
     });
 
     if (hasContent) {
-      // 1. Sync No
       const expectedNo = i + 1;
       if (rowVals[0] !== expectedNo) {
         sheet.getRange(rowIdx, CONFIG.COL.NO).setValue(expectedNo);
         updatedNoCount++;
       }
 
-      // 2. Sync Link Foto
       const currentFormula = formulas[i][0];
       const currentVal = rowVals[8];
       const kodeMaterial = rowVals[3];
@@ -158,7 +211,6 @@ function syncNoAndLinks() {
         sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + cleanUrl + '", "Link")');
         updatedLinkCount++;
       } else if (kodeMaterial) {
-        // Try searching Drive
         const matched = findDriveImageUrlByCode(kodeMaterial);
         if (matched) {
           sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + matched + '", "Link")');

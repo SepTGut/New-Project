@@ -32,11 +32,25 @@
       z-index: 1000;
       background: #1A237E;
       color: #ffffff;
-      padding: 12px 20px;
+      padding: 10px 18px;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
+      gap: 10px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+
+    .toolbar select {
+      font-family: inherit;
+      font-size: 12px;
+      border-radius: 6px;
+      padding: 6px 12px;
+      border: none;
+      outline: none;
+      background: #ffffff;
+      color: #1a1a1a;
+      font-weight: 600;
     }
 
     .btn-print {
@@ -45,17 +59,22 @@
       font-weight: 700;
       cursor: pointer;
       border: none;
-      padding: 8px 16px;
+      padding: 7px 16px;
       border-radius: 6px;
-      font-size: 13px;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .btn-print:hover {
+      background: #69F0AE;
     }
 
     .btn-close {
       background: rgba(255,255,255,0.2);
       color: #fff;
       border: none;
-      padding: 8px 14px;
+      padding: 7px 14px;
       border-radius: 6px;
+      font-size: 12px;
       cursor: pointer;
     }
 
@@ -148,7 +167,7 @@
 
     .role-admin { background: #E8EAF6; color: #1A237E; border: 1px solid #C5CAE9; }
     .role-user { background: #E8F5E9; color: #1B5E20; border: 1px solid #C8E6C9; }
-    .role-iit { background: #F3E5F5; color: #4A148C; border: 1px solid #E1BEE7; }
+    .role-iit { display: none !important; }
 
     .badge-right {
       width: 28mm;
@@ -190,7 +209,13 @@
 <body>
 
   <div class="toolbar">
-    <div style="font-weight:700; font-size:14px;">🪪 Kartu QR Login Pengguna (Admin, User, IIT)</div>
+    <div style="font-weight:700; font-size:13px; display:flex; align-items:center; gap:8px;">
+      <span>🪪 Cetak Kartu QR Login Pengguna</span>
+      <select id="userFilterSelect" onchange="renderFilteredBadges()">
+        <option value="ALL">-- Cetak Semua Akun --</option>
+      </select>
+    </div>
+
     <div style="display:flex; gap:10px;">
       <button class="btn-print" onclick="window.print()">🖨️ Cetak ID Badge (Print)</button>
       <button class="btn-close" onclick="google.script.host.close()">✕ Tutup</button>
@@ -202,43 +227,73 @@
   </div>
 
   <script>
+    let allUsers = [];
+    let appLogo = '';
+
     window.onload = function() {
       google.script.run.withSuccessHandler(function(data) {
-        const users = data.users || [];
-        const logo = data.logoUri || '';
-        const container = document.getElementById('badgeContainer');
-        container.innerHTML = '';
+        allUsers = data.users || [];
+        appLogo = data.logoUri || '';
 
-        users.forEach(u => {
-          const roleClass = (u.role.toLowerCase() === 'admin') ? 'role-admin' :
-                            (u.role.toLowerCase() === 'iit') ? 'role-iit' : 'role-user';
-
-          const card = document.createElement('div');
-          card.className = 'badge-card';
-          card.innerHTML = `
-            <div class="badge-left">
-              <div class="badge-header">
-                ${logo ? `<img src="${logo}" class="badge-logo" alt="Logo">` : ''}
-                <div class="badge-corp">SMART VISUAL<br>WAREHOUSE</div>
-              </div>
-              <div class="badge-user-info">
-                <div class="badge-name">${u.name}</div>
-                <div class="badge-username">@${u.username}</div>
-                <div class="badge-email">${u.email || '-'}</div>
-              </div>
-              <div>
-                <span class="badge-role ${roleClass}">${u.role}</span>
-              </div>
-            </div>
-            <div class="badge-right">
-              <img src="${u.qrUrl}" class="qr-img" alt="QR Code">
-              <div class="scan-hint">Scan to Login</div>
-            </div>
-          `;
-          container.appendChild(card);
-        });
+        populateUserFilter();
+        renderFilteredBadges();
       }).getUserQRModalData();
     };
+
+    function populateUserFilter() {
+      const select = document.getElementById('userFilterSelect');
+      select.innerHTML = '<option value="ALL">-- Cetak Semua Akun --</option>';
+
+      allUsers.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.username;
+        opt.textContent = `${u.name} (@${u.username}) - [${u.role}]`;
+        select.appendChild(opt);
+      });
+    }
+
+    function renderFilteredBadges() {
+      const selected = document.getElementById('userFilterSelect').value;
+      const container = document.getElementById('badgeContainer');
+      container.innerHTML = '';
+
+      const usersToRender = (selected === 'ALL')
+        ? allUsers
+        : allUsers.filter(u => u.username === selected);
+
+      if (usersToRender.length === 0) {
+        container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; font-weight:600; color:#757575;">Tidak ada data pengguna yang tersedia untuk dicetak.</div>';
+        return;
+      }
+
+      usersToRender.forEach(u => {
+        const roleClass = (u.role.toLowerCase() === 'admin') ? 'role-admin' : 'role-user';
+
+        const card = document.createElement('div');
+        card.className = 'badge-card';
+        card.innerHTML = `
+          <div class="badge-left">
+            <div class="badge-header">
+              ${appLogo ? `<img src="${appLogo}" class="badge-logo" alt="Logo">` : ''}
+              <div class="badge-corp">SMART VISUAL<br>WAREHOUSE</div>
+            </div>
+            <div class="badge-user-info">
+              <div class="badge-name">${u.name}</div>
+              <div class="badge-username">@${u.username}</div>
+              <div class="badge-email">${u.email || '-'}</div>
+            </div>
+            <div>
+              <span class="badge-role ${roleClass}">${u.role}</span>
+            </div>
+          </div>
+          <div class="badge-right">
+            <img src="${u.qrUrl}" class="qr-img" alt="QR Code">
+            <div class="scan-hint">Scan to Login</div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
   </script>
 </body>
 </html>
