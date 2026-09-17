@@ -18,61 +18,17 @@ function onOpen() {
 }
 
 /**
- * Opens Print Card modal in Single Item mode
+ * Opens Print Card modal in Single Item mode using native prompt (KPMscript pattern)
  */
 function openSingleCardDialog() {
-  const template = HtmlService.createTemplateFromFile('PrintCardModal');
-  template.initialMode = 'single';
-  template.logoUri = PrintCardService.getLogoDataUri();
-
-  let initialRange = '1';
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getActiveSheet();
-    if (sheet && sheet.getName() === CONFIG.SHEET_PICTFINDER) {
-      const curRow = sheet.getActiveCell().getRow();
-      if (curRow >= CONFIG.DATA_START_ROW) {
-        const noVal = sheet.getRange(curRow, CONFIG.COL.NO).getValue();
-        if (noVal) initialRange = String(noVal);
-      }
-    }
-  } catch (e) {}
-  template.initialRange = initialRange;
-
-  const html = template.evaluate()
-    .setWidth(1020)
-    .setHeight(760)
-    .setTitle('Cetak Kartu Stok Material (Single - 4/A4)');
-  SpreadsheetApp.getUi().showModalDialog(html, 'Cetak Kartu Stok Material (Single - 4/A4)');
+  PrintCardService.promptAndPrintSingle();
 }
 
 /**
- * Opens Print Card modal in Group mode
+ * Opens Print Card modal in Group mode using native prompt (KPMscript pattern)
  */
 function openGroupCardDialog() {
-  const template = HtmlService.createTemplateFromFile('PrintCardModal');
-  template.initialMode = 'group';
-  template.logoUri = PrintCardService.getLogoDataUri();
-
-  let initialRange = '1';
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getActiveSheet();
-    if (sheet && sheet.getName() === CONFIG.SHEET_PICTFINDER) {
-      const curRow = sheet.getActiveCell().getRow();
-      if (curRow >= CONFIG.DATA_START_ROW) {
-        const grpVal = sheet.getRange(curRow, CONFIG.COL.GROUP).getValue();
-        if (grpVal) initialRange = String(grpVal).trim();
-      }
-    }
-  } catch (e) {}
-  template.initialRange = initialRange;
-
-  const html = template.evaluate()
-    .setWidth(1020)
-    .setHeight(760)
-    .setTitle('Cetak Kartu Stok Material (Group - 2/A4)');
-  SpreadsheetApp.getUi().showModalDialog(html, 'Cetak Kartu Stok Material (Group - 2/A4)');
+  PrintCardService.promptAndPrintGroup();
 }
 
 /**

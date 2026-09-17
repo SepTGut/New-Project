@@ -225,6 +225,29 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 11 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@11).
 
+---
+
+## [GAS v2.8: KPMscript Pattern Native Prompt & Server-Rendered Print View] - 2026-09-17
+### Architectural Transition to KPMscript Pattern
+- **Eliminated Complex HTML Form Modals**:
+  - Removed all interactive form inputs, dropdowns, mode-switch buttons, chips, and asynchronous `google.script.run` client-server RPCs from the modal dialog.
+  - Replaced the input step with native Google Sheets `ui.prompt()` message boxes, mirroring the battle-tested `printKpmM` architecture from `KPMscript`.
+- **Native Prompt Selection**:
+  - **Single Item Cards**: User clicks menu -> native Google Sheets prompt appears with active item number pre-filled. User can enter `1`, `1-2`, `1,3`, `1-5`.
+  - **Group Cards**: User clicks menu -> native Google Sheets prompt appears with active group name pre-filled. User can enter `1`, `A`, `1-2`, `A-B`, `1,3`, `A,D`.
+- **Server-Side Normalization**:
+  - Automatically calculates and normalizes cards to complete A4 pages on the server:
+    - Single mode: multiples of 4 cards per A4 page (e.g. 1 item -> 1 card + 3 blanks; 5 items -> 5 cards + 3 blanks across 2 A4 pages).
+    - Group mode: multiples of 2 cards per A4 page (e.g. 1 group -> 1 group + 1 blank; 2 groups -> 2 groups on 1 A4 page).
+- **Pure Server-Rendered Print Preview (`PrintCardModal.html`)**:
+  - Directly renders complete pages and cards using Apps Script server scriptlets, matching `PrintKPM.html`.
+  - Clean top toolbar featuring **Cetak Sekarang (Print)** (`window.print()`) and **Tutup** (`google.script.host.close()`) with live badge summary.
+  - Zero risk of JavaScript syntax/token errors as all barcode payloads are stored in HTML data attributes and evaluated cleanly.
+- **Deployment**:
+  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 12 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@12).
+
+
 
 
 
