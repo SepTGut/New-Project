@@ -57,6 +57,7 @@ const PrintCardService = {
 
     for (let i = 0; i < values.length; i++) {
       const row = values[i];
+      const noVal = row[CONFIG.COL.NO - 1];
       const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
       const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
       const group = String(row[CONFIG.COL.GROUP - 1] || '').trim();
@@ -64,6 +65,7 @@ const PrintCardService = {
 
       if (kode || nama) {
         list.push({
+          no: (noVal !== '' && noVal !== null && noVal !== undefined) ? noVal : (i + 1),
           rowIndex: CONFIG.DATA_START_ROW + i,
           kodeMaterial: kode || ('ITEM-' + (i + 1)),
           namaBarang: nama,
@@ -77,24 +79,53 @@ const PrintCardService = {
   },
 
   /**
+   * Returns list of all distinct Groups with their material items
+   */
+  getAllGroupsData: function() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+    if (!sheet) return [];
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < CONFIG.DATA_START_ROW) return [];
+
+    const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
+    const data = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 9).getValues();
+    const groupMap = {};
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const g = String(row[CONFIG.COL.GROUP - 1] || '').trim();
+      if (!g) continue;
+      if (!groupMap[g]) {
+        groupMap[g] = {
+          name: g,
+          groupName: g,
+          deskripsi: 'Daftar Material Group ' + g,
+          items: [],
+          isBlank: false
+        };
+      }
+      groupMap[g].items.push({
+        komat: row[CONFIG.COL.KODE_MATERIAL - 1] || '-',
+        name: row[CONFIG.COL.NAMA_BARANG - 1] || '-',
+        qty: row[CONFIG.COL.QTY - 1] || 0,
+        uom: row[CONFIG.COL.UOM - 1] || ''
+      });
+    }
+
+    return Object.keys(groupMap).sort().map(function(k, idx) {
+      const grp = groupMap[k];
+      grp.index = idx + 1;
+      return grp;
+    });
+  },
+
+  /**
    * Returns list of all distinct Groups for UI dropdown selection
    */
   getAllGroupsList: function() {
-    const materials = this.getAllMaterialsList();
-    const groupsSet = {};
-
-    materials.forEach(function(m) {
-      const g = (m.group || '').trim();
-      if (g) {
-        groupsSet[g] = (groupsSet[g] || 0) + 1;
-      }
-    });
-
-    const groups = Object.keys(groupsSet).sort().map(function(g) {
-      return { name: g, count: groupsSet[g] };
-    });
-
-    return groups;
+    return this.getAllGroupsData();
   },
 
   /**

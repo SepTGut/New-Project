@@ -24,11 +24,26 @@ function openSingleCardDialog() {
   const template = HtmlService.createTemplateFromFile('PrintCardModal');
   template.initialMode = 'single';
   template.logoUri = PrintCardService.getLogoDataUri();
+
+  let initialRange = '1';
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getActiveSheet();
+    if (sheet && sheet.getName() === CONFIG.SHEET_PICTFINDER) {
+      const curRow = sheet.getActiveCell().getRow();
+      if (curRow >= CONFIG.DATA_START_ROW) {
+        const noVal = sheet.getRange(curRow, CONFIG.COL.NO).getValue();
+        if (noVal) initialRange = String(noVal);
+      }
+    }
+  } catch (e) {}
+  template.initialRange = initialRange;
+
   const html = template.evaluate()
-    .setWidth(980)
-    .setHeight(720)
+    .setWidth(1020)
+    .setHeight(760)
     .setTitle('Cetak Kartu Stok Material (Single - 4/A4)');
-  SpreadsheetApp.getUi().showModalDialog(html, 'Cetak Kartu Stok Material');
+  SpreadsheetApp.getUi().showModalDialog(html, 'Cetak Kartu Stok Material (Single - 4/A4)');
 }
 
 /**
@@ -38,11 +53,26 @@ function openGroupCardDialog() {
   const template = HtmlService.createTemplateFromFile('PrintCardModal');
   template.initialMode = 'group';
   template.logoUri = PrintCardService.getLogoDataUri();
+
+  let initialRange = '1';
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getActiveSheet();
+    if (sheet && sheet.getName() === CONFIG.SHEET_PICTFINDER) {
+      const curRow = sheet.getActiveCell().getRow();
+      if (curRow >= CONFIG.DATA_START_ROW) {
+        const grpVal = sheet.getRange(curRow, CONFIG.COL.GROUP).getValue();
+        if (grpVal) initialRange = String(grpVal).trim();
+      }
+    }
+  } catch (e) {}
+  template.initialRange = initialRange;
+
   const html = template.evaluate()
-    .setWidth(980)
-    .setHeight(720)
+    .setWidth(1020)
+    .setHeight(760)
     .setTitle('Cetak Kartu Stok Material (Group - 2/A4)');
-  SpreadsheetApp.getUi().showModalDialog(html, 'Cetak Kartu Stok Material');
+  SpreadsheetApp.getUi().showModalDialog(html, 'Cetak Kartu Stok Material (Group - 2/A4)');
 }
 
 /**
@@ -76,30 +106,30 @@ function getPrintModalInitialData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const activeSheet = ss.getActiveSheet();
   let activeRow = -1;
+  let activeNo = 1;
+  let activeGroup = '';
 
   if (activeSheet && activeSheet.getName() === CONFIG.SHEET_PICTFINDER) {
     const curRow = activeSheet.getActiveCell().getRow();
     if (curRow >= CONFIG.DATA_START_ROW) {
       activeRow = curRow;
+      const noVal = activeSheet.getRange(curRow, CONFIG.COL.NO).getValue();
+      if (noVal) activeNo = noVal;
+      const grpVal = activeSheet.getRange(curRow, CONFIG.COL.GROUP).getValue();
+      if (grpVal) activeGroup = String(grpVal).trim();
     }
   }
 
   const materials = PrintCardService.getAllMaterialsList();
-  const groups = PrintCardService.getAllGroupsList();
+  const groups = PrintCardService.getAllGroupsData();
   const logoUri = PrintCardService.getLogoDataUri();
-
-  let defaultItem = null;
-  if (activeRow !== -1) {
-    defaultItem = PrintCardService.getItemCardData(activeRow);
-  } else if (materials.length > 0) {
-    defaultItem = PrintCardService.getItemCardData(materials[0].kodeMaterial);
-  }
 
   return {
     materials: materials,
     groups: groups,
     logoUri: logoUri,
-    defaultItem: defaultItem
+    activeNo: activeNo,
+    activeGroup: activeGroup
   };
 }
 

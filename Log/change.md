@@ -190,6 +190,32 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 9 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@9).
 
+---
+
+## [GAS v2.6: Simplified Print Form & Dynamic A4 Sheet Normalization] - 2026-09-17
+### Added & Improved
+- **Simplified Number/Range Selector for Single Items**:
+  - Replaced clumsy material dropdowns and multi-mode layout selectors with a clean range input (e.g. `1`, `1-2`, `1-4`, `1,3`, `1-5`).
+  - Implemented automatic normalization onto A4 sheets:
+    - 4 card slots per A4 page.
+    - Selecting `1` prints 1 chosen card + 3 blank duplicate templates on 1 A4 sheet.
+    - Selecting `1-2` prints 2 chosen cards + 2 blank duplicate templates on 1 A4 sheet.
+    - Selecting `1-5` automatically creates 2 A4 sheets (Sheet 1: 4 cards, Sheet 2: 1 card + 3 blanks).
+- **Simplified Group Range Selector**:
+  - Supports entering group identifiers such as `1-2`, `A-B`, `1,3`, or `A,D`.
+  - Normalizes onto A4 sheets (2 cards per A4 sheet, A5 half-page):
+    - Selecting `A` or `1` prints 1 group card + 1 blank group template on 1 A4 sheet.
+    - Selecting `A-B` or `1-2` prints 2 group cards on 1 A4 sheet.
+    - Selecting 3 groups automatically creates 2 A4 sheets (Sheet 1: 2 groups, Sheet 2: 1 group + 1 blank).
+- **Multi-Sheet DOM & Clean Print Pagination**:
+  - Replaced single static sheet with dynamic `#pagesContainer` generating `<div class="a4-sheet">` for each required page with CSS page-break rules.
+- **Pre-seeded Active Row Detection**:
+  - Opening the modal from the spreadsheet automatically detects the current selected row number or group and pre-populates the input.
+- **Deployment**:
+  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 10 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@10).
+
+
 
 
 
