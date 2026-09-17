@@ -12,33 +12,47 @@ const PrintCardService = {
    * 3. Priority 3: Direct Google Drive UC URL
    */
   getLogoDataUri: function() {
-    // 1. Instant high-res embedded Base64 URI for 1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT
+    const logoId = CONFIG.LOGO_ID || '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT';
+
+    // 1. Instant high-res embedded Base64 URI from LogoUri.js (exact 1UWZK logo)
     try {
       if (typeof getTargetLogoDataUri === 'function') {
         const uri = getTargetLogoDataUri();
-        if (uri) return uri;
+        if (uri && uri.indexOf('data:image') === 0) return uri;
       }
-      if (typeof TARGET_LOGO_DATA_URI !== 'undefined' && TARGET_LOGO_DATA_URI) {
+      if (typeof TARGET_LOGO_DATA_URI !== 'undefined' && TARGET_LOGO_DATA_URI && TARGET_LOGO_DATA_URI.indexOf('data:image') === 0) {
         return TARGET_LOGO_DATA_URI;
       }
     } catch (e) {
-      Logger.log('getLogoDataUri notice: ' + e.message);
+      Logger.log('getLogoDataUri LogoUri.js notice: ' + e.message);
     }
 
-    // 2. DriveApp extraction
-    const logoId = CONFIG.LOGO_ID || '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT';
+    // 2. ScriptCache (KPMscript pattern)
+    try {
+      const cache = CacheService.getScriptCache();
+      const cached = cache.get('APP_PRINT_LOGO_' + logoId);
+      if (cached) return cached;
+    } catch (e) {}
+
+    // 3. Fallback: DriveApp fetch (KPMscript pattern)
     try {
       const file = DriveApp.getFileById(logoId);
       const blob = file.getBlob();
       const contentType = blob.getContentType();
       const base64 = Utilities.base64Encode(blob.getBytes());
-      return 'data:' + contentType + ';base64,' + base64;
+      const dataUrl = 'data:' + contentType + ';base64,' + base64;
+      try {
+        if (dataUrl.length < 100000) {
+          CacheService.getScriptCache().put('APP_PRINT_LOGO_' + logoId, dataUrl, 21600); // 6 hours
+        }
+      } catch (ce) {}
+      return dataUrl;
     } catch (err) {
       Logger.log('getLogoDataUri DriveApp warning: ' + err.message);
     }
 
-    // 3. Fallback direct Drive view URL
-    return 'https://drive.google.com/uc?id=' + logoId;
+    // 4. Fallback Google Drive LH3 CDN direct URL
+    return 'https://lh3.googleusercontent.com/d/' + logoId;
   },
 
   /**

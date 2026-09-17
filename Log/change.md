@@ -247,6 +247,24 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 12 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@12).
 
+---
+
+## [GAS v2.9: Fix Logo Rendering with Unescaped Scriptlet & Google LH3 CDN Fallback] - 2026-09-17
+### Fixed
+- **Root Cause Analysis in KPMscript**:
+  - In `PrintKPM.html` (line 479) and `AboutDialog.html` (line 260), KPMscript uses raw unescaped scriptlets `<?!= data.logo ?>` (with `!`).
+  - Previously in `PrintCardModal.html`, `<?= data.logoUrl ?>` was used without `!`, causing Google Apps Script's HTML template engine to escape semicolons, slashes, and equal signs into HTML entities (`&#59;`, `&#x2F;`, `&#61;`), breaking browser data URI parsing.
+- **Unescaped Scriptlet Output**:
+  - Updated both single card and group card logo image tags to `<?!= data.logoUrl ?>`.
+- **Multi-Tier Robust Fallback & Direct Google LH3 CDN**:
+  - Extracted the exact logo for Drive ID `1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT` into `GAS/LogoUri.js` at a crisp 200px resolution (74 KB).
+  - Added `onerror="this.onerror=null; this.src='https://lh3.googleusercontent.com/d/1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT';"` to instantly fall back to Google's universal high-speed image CDN if data URI ever fails.
+  - Mirrored KPMscript's in-memory and `ScriptCache` caching in `PrintCardService.getLogoDataUri()`.
+- **Deployment**:
+  - Pushed 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 13 and deployed to active deployment `AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7` (@13).
+
+
 
 
 
