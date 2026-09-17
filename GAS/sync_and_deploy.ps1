@@ -1,7 +1,7 @@
 # ==============================================================================
 # 🚀 Sync and Update Deployment Script for Google Apps Script
 # ==============================================================================
-$DEPLOYMENT_ID = "AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7"
+$DEPLOYMENT_ID = "AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK"
 
 Write-Host "1/3 Pushing local modular files to Google Apps Script..." -ForegroundColor Cyan
 clasp push
