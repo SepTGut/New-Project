@@ -292,3 +292,38 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed all 10 project files to Google Apps Script via `@google/clasp push --force`.
   - Created version 17 and updated active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@17).
 
+---
+
+## [GAS v3.3: Resolved IDE Scriptlet Syntax Diagnostics in PrintUserQR.html] - 2026-09-18
+### Identified Problem
+- In `GAS/PrintUserQR.html`, line 232 had `let appLogo = <?= JSON.stringify(logoUri || '') ?>;` directly inside the `<script>` tag.
+- Client-side IDE language servers (VS Code / Antigravity IDE) parse `<script>` blocks strictly as JavaScript/TypeScript, triggering five `Expression expected` syntax errors on the `<` template delimiter.
+
+### Solution & Changes
+- **Decoupled Server Template Scriptlet from Client JavaScript**:
+  - Extracted the server template scriptlet into an HTML carrier data attribute immediately before the `<script>` tag:
+    ```html
+    <div id="initialLogoData" data-logo="<?= encodeURIComponent(logoUri || '') ?>" style="display:none;"></div>
+    ```
+  - Replaced the inline scriptlet assignment in the `<script>` tag with pure, valid JavaScript:
+    ```javascript
+    let allUsers = [];
+    let appLogo = DEFAULT_LOGO_DATA_URI;
+    try {
+      const initLogoEl = document.getElementById('initialLogoData');
+      if (initLogoEl && initLogoEl.getAttribute('data-logo')) {
+        const decodedLogo = decodeURIComponent(initLogoEl.getAttribute('data-logo'));
+        if (decodedLogo && decodedLogo.length > 10 && decodedLogo.indexOf('<?') !== 0) {
+          appLogo = decodedLogo;
+        }
+      }
+    } catch (e) {}
+    ```
+  - Preserved the client-side asynchronous update in `window.onload` via `getUserQRModalData()`, which dynamically loads `data.logoUri` and refreshes user badges.
+- **Diagnostics Verification**:
+  - Zero syntax errors or IDE diagnostics in `GAS/PrintUserQR.html`.
+- **Deployment**:
+  - Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
+  - Created version 18 and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@18).
+
+
