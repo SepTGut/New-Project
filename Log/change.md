@@ -348,5 +348,30 @@ All notable changes and architectural transitions are documented in this file.
 - Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
 - Created **Version 19** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@19).
 
+---
+
+## [GAS v3.5: Exported 64 Material Items & 8-Column Warehouse Synchronization] - 2026-09-18
+### Completed Data Export
+- **Exported All 64 Items from Source Spreadsheet** (`https://docs.google.com/spreadsheets/d/1SyeWtAjKAFyDs8oDVxKhiQluF45JjB_Se79PjmfrQxQ/edit?gid=0#gid=0`):
+  - [data/exported_source_inventory.csv](file:///d:/MyCode/New-Project/data/exported_source_inventory.csv): UTF-8 BOM CSV mapped directly to warehouse columns (`No`, `Lokasi Rak`, `Kode Material`, `Nama Barang`, `Qty`, `UoM`, `Deskripsi`, `Link Foto`).
+  - [data/exported_source_inventory.json](file:///d:/MyCode/New-Project/data/exported_source_inventory.json): Full structured JSON dataset with item metadata and photo drive URLs.
+  - [data/source_raw.csv](file:///d:/MyCode/New-Project/data/source_raw.csv): 1-to-1 exact raw replica of the source sheet.
+
+### One-Click In-App Import Feature
+- Added `importFromSourceSheet()` in `GAS/Code.js` with menu item:
+  - `📥 Salin Data dari Sheet Sumber (64 Item)` in `📦 Smart Warehouse`.
+  - Automatically fetches the source CSV via `UrlFetchApp`, parses all 64 items, populates `PictFinder` starting at row 3 with auto-hyperlinked photos, sequential numbering, and standardized styling.
+
+### Standardized 8-Column Schema
+- Aligned `GAS/Config.js`, `GAS/FixFormat.js`, `GAS/Automation.js`, and `GAS/PrintCardService.js` to match the exact 8-column layout of the live sheet:
+  - `HEADER_ROW`: 2
+  - `DATA_START_ROW`: 3
+  - Columns: `NO (1)`, `LOKASI_RAK (2)`, `KODE_MATERIAL (3)`, `NAMA_BARANG (4)`, `QTY (5)`, `UOM (6)`, `DESKRIPSI (7)`, `LINK_FOTO (8)`.
+
+### Deployment
+- Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
+- Created **Version 20** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@20).
+
+
 
 

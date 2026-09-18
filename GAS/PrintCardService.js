@@ -94,7 +94,7 @@ const PrintCardService = {
     if (lastRow < CONFIG.DATA_START_ROW) return [];
 
     const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 9).getValues();
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
     const list = [];
 
     for (let i = 0; i < values.length; i++) {
@@ -102,10 +102,9 @@ const PrintCardService = {
       const noVal = row[CONFIG.COL.NO - 1];
       const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
       const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
-      const group = String(row[CONFIG.COL.GROUP - 1] || '').trim();
       const lokasi = String(row[CONFIG.COL.LOKASI_RAK - 1] || '').trim();
 
-      const hasContent = row.slice(1, 9).some(function(v) {
+      const hasContent = row.slice(1, 8).some(function(v) {
         return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
       });
 
@@ -115,7 +114,6 @@ const PrintCardService = {
           rowIndex: CONFIG.DATA_START_ROW + i,
           kodeMaterial: kode || ('ITEM-' + (i + 1)),
           namaBarang: nama || '-',
-          group: group,
           lokasiRak: lokasi
         });
       }
@@ -219,7 +217,7 @@ const PrintCardService = {
 
     const lastRow = Math.max(sheet.getLastRow(), CONFIG.DATA_START_ROW);
     const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 9).getValues();
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
 
     // Map rows by No
     const itemMapByNo = {};
@@ -242,7 +240,6 @@ const PrintCardService = {
         namaBarang: nama || '-',
         spesifikasi: String(row[CONFIG.COL.DESKRIPSI - 1] || '').trim(),
         lokasiRak: String(row[CONFIG.COL.LOKASI_RAK - 1] || '-').trim(),
-        group: String(row[CONFIG.COL.GROUP - 1] || '-').trim(),
         satuan: String(row[CONFIG.COL.UOM - 1] || 'PCS').trim(),
         qty: row[CONFIG.COL.QTY - 1] || 0,
         linkFoto: String(row[CONFIG.COL.LINK_FOTO - 1] || '').trim(),
@@ -268,7 +265,6 @@ const PrintCardService = {
           namaBarang: '-',
           spesifikasi: '',
           lokasiRak: '-',
-          group: '-',
           satuan: 'PCS',
           qty: 0,
           linkFoto: '',
@@ -294,7 +290,6 @@ const PrintCardService = {
         namaBarang: '',
         spesifikasi: '',
         lokasiRak: '',
-        group: '',
         satuan: '',
         qty: '',
         linkFoto: '',

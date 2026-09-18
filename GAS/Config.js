@@ -38,23 +38,22 @@ const CONFIG = {
     return getEnv('SHEET_TCARD', 'Tcard');
   },
   get HEADER_ROW() {
-    return 5;
+    return 2;
   },
   get DATA_START_ROW() {
-    return 6;
+    return 3;
   },
 
-  // Column definitions for PictFinder
+  // Column definitions for PictFinder (8 columns)
   COL: {
     NO: 1,
     LOKASI_RAK: 2,
-    GROUP: 3,
-    KODE_MATERIAL: 4,
-    NAMA_BARANG: 5,
-    QTY: 6,
-    UOM: 7,
-    DESKRIPSI: 8,
-    LINK_FOTO: 9
+    KODE_MATERIAL: 3,
+    NAMA_BARANG: 4,
+    QTY: 5,
+    UOM: 6,
+    DESKRIPSI: 7,
+    LINK_FOTO: 8
   }
 };
 

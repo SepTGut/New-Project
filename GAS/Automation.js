@@ -47,15 +47,15 @@ function handlePictFinderEdit(e, sheet) {
     const maxScanRow = Math.max(sheet.getLastRow(), endRow);
     if (maxScanRow >= CONFIG.DATA_START_ROW) {
       const numScan = maxScanRow - CONFIG.DATA_START_ROW + 1;
-      const allVals = sheet.getRange(CONFIG.DATA_START_ROW, 1, numScan, 9).getValues();
+      const allVals = sheet.getRange(CONFIG.DATA_START_ROW, 1, numScan, 8).getValues();
       for (let i = 0; i < numScan; i++) {
         const rIdx = CONFIG.DATA_START_ROW + i;
         const rVals = allVals[i];
-        const hasContent = rVals.slice(1, 9).some(function(v) {
+        const hasContent = rVals.slice(1, 8).some(function(v) {
           return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
         });
         if (hasContent) {
-          const expectedNo = rIdx - CONFIG.HEADER_ROW;
+          const expectedNo = i + 1;
           if (rVals[0] !== expectedNo) {
             sheet.getRange(rIdx, CONFIG.COL.NO).setValue(expectedNo);
           }
@@ -197,8 +197,8 @@ function syncNoAndLinks() {
   }
 
   // 1. Enforce & restore full header row
-  const headers = ['No', 'Lokasi Rak', 'Group', 'Kode Material', 'Nama Barang', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
-  sheet.getRange(CONFIG.HEADER_ROW, 1, 1, 9).setValues([headers]);
+  const headers = ['No', 'Lokasi Rak', 'Kode Material', 'Nama Barang', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
+  sheet.getRange(CONFIG.HEADER_ROW, 1, 1, 8).setValues([headers]);
 
   const lastRow = sheet.getLastRow();
   if (lastRow < CONFIG.DATA_START_ROW) {
@@ -207,8 +207,8 @@ function syncNoAndLinks() {
   }
 
   const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-  const rangeData = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 9).getValues();
-  const formulas = sheet.getRange(CONFIG.DATA_START_ROW, 9, numRows, 1).getFormulas();
+  const rangeData = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+  const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
 
   let updatedNoCount = 0;
   let updatedLinkCount = 0;
@@ -217,7 +217,7 @@ function syncNoAndLinks() {
     const rowIdx = CONFIG.DATA_START_ROW + i;
     const rowVals = rangeData[i];
 
-    const hasContent = rowVals.slice(1, 9).some(function(v) {
+    const hasContent = rowVals.slice(1, 8).some(function(v) {
       return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
     });
 
@@ -229,8 +229,8 @@ function syncNoAndLinks() {
       }
 
       const currentFormula = formulas[i][0];
-      const currentVal = rowVals[8];
-      const kodeMaterial = rowVals[3];
+      const currentVal = rowVals[CONFIG.COL.LINK_FOTO - 1];
+      const kodeMaterial = rowVals[CONFIG.COL.KODE_MATERIAL - 1];
 
       if (currentFormula && currentFormula.startsWith('=HYPERLINK')) {
         // Already formatted hyperlink
