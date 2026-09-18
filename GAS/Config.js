@@ -38,10 +38,10 @@ const CONFIG = {
     return getEnv('SHEET_TCARD', 'Tcard');
   },
   get HEADER_ROW() {
-    return 2;
+    return 5;
   },
   get DATA_START_ROW() {
-    return 3;
+    return 6;
   },
 
   // Column definitions for PictFinder (8 columns)

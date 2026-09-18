@@ -372,6 +372,29 @@ All notable changes and architectural transitions are documented in this file.
 - Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
 - Created **Version 20** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@20).
 
+---
+
+## [GAS v3.6: Row Layout Correction - Data Starts from Row 6] - 2026-09-18
+### Changes
+- **Updated Sheet Row Geometry**:
+  - `CONFIG.HEADER_ROW`: Set to Row 5.
+  - `CONFIG.DATA_START_ROW`: Set to Row 6 (data rows now start from Row 6 onward).
+  - Rows 1 to 3: Title banner (`Stock Opname Gudang`).
+  - Row 4: Spacer row.
+  - Row 5: Column headers (`No`, `Lokasi Rak`, `Kode Material`, `Nama Barang`, `Qty`, `UoM`, `Deskripsi`, `Link Foto`).
+  - Row 6+: Inventory data records.
+- **Updated Components**:
+  - `GAS/Config.js`: Configured `HEADER_ROW = 5` and `DATA_START_ROW = 6`.
+  - `GAS/FixFormat.js`: Formats rows 1-3 as title banner, cleans row 4 spacer, formats row 5 as blue header, and applies zebra striping + numbering from row 6 down.
+  - `GAS/Code.js`: `importFromSourceSheet()` now inserts all 64 items starting at row 6.
+  - `GAS/Automation.js`: Aligned edit listeners and gap auto-healing to row 6.
+  - `GAS/PrintCardService.js`: Reads materials starting from row 6.
+
+### Deployment
+- Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
+- Created **Version 21** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@21).
+
+
 
 
 

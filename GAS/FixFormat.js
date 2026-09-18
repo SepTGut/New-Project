@@ -26,25 +26,29 @@ function fixFormat() {
   const lastRow = Math.max(sheet.getLastRow(), CONFIG.DATA_START_ROW);
   const totalCols = 8;
 
-  // 1. Title Banner (Row 1)
+  // 1. Title Banner (Row 1 to 3)
   try {
     const titleCell = sheet.getRange(1, 1);
     if (!titleCell.getValue()) {
       titleCell.setValue('Stock Opname Gudang');
     }
-    const titleRange = sheet.getRange(1, 1, 1, totalCols);
+    const titleRange = sheet.getRange(1, 1, 3, totalCols);
     titleRange.setFontFamily('Arial')
       .setFontSize(14)
       .setFontWeight('bold')
       .setFontColor('#1A237E')
       .setHorizontalAlignment('center')
       .setVerticalAlignment('middle');
-    sheet.setRowHeight(1, 36);
+    sheet.setRowHeight(1, 28);
+    sheet.setRowHeight(2, 28);
+    sheet.setRowHeight(3, 28);
+    sheet.setRowHeight(4, 15);
+    sheet.getRange(4, 1, 1, totalCols).setBackground('#FFFFFF').clearContent();
   } catch (err) {
     Logger.log('Title banner format notice: ' + err.message);
   }
 
-  // 2. Header Row (Row 2) - Enforce and restore all column names
+  // 2. Header Row (Row 5) - Enforce and restore all column names
   const headers = ['No', 'Lokasi Rak', 'Kode Material', 'Nama Barang', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
   const headerRange = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, totalCols);
   headerRange.setValues([headers]);
