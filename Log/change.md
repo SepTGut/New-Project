@@ -326,4 +326,27 @@ All notable changes and architectural transitions are documented in this file.
   - Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
   - Created version 18 and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@18).
 
+---
+
+## [GAS v3.4: Removed Group Card Printing Feature & Section] - 2026-09-18
+### Removed Components
+- **Spreadsheet Menu (`GAS/Code.js`)**:
+  - Removed `'📦 Cetak Kartu Group (Group - 2/A4)'` from the `📦 Smart Warehouse` menu in `onOpen()`.
+  - Renamed single card menu action to `'🏷️ Cetak Kartu Material (4/A4)'`.
+  - Removed `openGroupCardDialog()` and deprecated `getGroupCardData()` wrapper.
+  - Cleaned `getPrintModalInitialData()` by removing group scanning.
+- **Service Layer (`GAS/PrintCardService.js`)**:
+  - Removed `promptAndPrintGroup()`, `buildGroupPrintData()`, `getAllGroupsData()`, `getAllGroupsList()`, and `parseGroupRange()`.
+  - Updated `promptAndPrintSingle()` and `buildSinglePrintData()` title to `'Cetak Kartu Material (4/A4)'`.
+- **Print Modal Template (`GAS/PrintCardModal.html`)**:
+  - Deleted the entire Group Card rendering section (`<div class="grid-group-2"> ... </div>`, 15-item group ledger table, and QR code).
+  - Cleaned up CSS: removed `.grid-group-2`, `.card-group-box`, `.group-cut-divider`, `.table-group-ledger`, and `.card-group-box .logo-container`.
+  - Updated toolbar mode badge to `'🏷️ KARTU MATERIAL (4/A4)'`.
+  - Simplified `#pagesContainer` to render material cards directly without branching logic.
+
+### Deployment
+- Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
+- Created **Version 19** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@19).
+
+
 

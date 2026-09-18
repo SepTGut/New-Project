@@ -7,8 +7,7 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
 
   ui.createMenu('📦 Smart Warehouse')
-    .addItem('🏷️ Cetak Kartu Material (Single - 4/A4)', 'openSingleCardDialog')
-    .addItem('📦 Cetak Kartu Group (Group - 2/A4)', 'openGroupCardDialog')
+    .addItem('🏷️ Cetak Kartu Material (4/A4)', 'openSingleCardDialog')
     .addItem('🪪 Cetak QR Login Pengguna (User QR)', 'openUserQRDialog')
     .addSeparator()
     .addItem('🧹 Rapikan Format Sheet (Fix Format)', 'fixFormat')
@@ -22,13 +21,6 @@ function onOpen() {
  */
 function openSingleCardDialog() {
   PrintCardService.promptAndPrintSingle();
-}
-
-/**
- * Opens Print Card modal in Group mode using native prompt (KPMscript pattern)
- */
-function openGroupCardDialog() {
-  PrintCardService.promptAndPrintGroup();
 }
 
 /**
@@ -105,7 +97,6 @@ function getPrintModalInitialData() {
   const activeSheet = ss.getActiveSheet();
   let activeRow = -1;
   let activeNo = 1;
-  let activeGroup = '';
 
   if (activeSheet && activeSheet.getName() === CONFIG.SHEET_PICTFINDER) {
     const curRow = activeSheet.getActiveCell().getRow();
@@ -113,30 +104,21 @@ function getPrintModalInitialData() {
       activeRow = curRow;
       const noVal = activeSheet.getRange(curRow, CONFIG.COL.NO).getValue();
       if (noVal) activeNo = noVal;
-      const grpVal = activeSheet.getRange(curRow, CONFIG.COL.GROUP).getValue();
-      if (grpVal) activeGroup = String(grpVal).trim();
     }
   }
 
   const materials = PrintCardService.getAllMaterialsList();
-  const groups = PrintCardService.getAllGroupsData();
   const logoUri = PrintCardService.getLogoDataUri();
 
   return {
     materials: materials,
-    groups: groups,
     logoUri: logoUri,
-    activeNo: activeNo,
-    activeGroup: activeGroup
+    activeNo: activeNo
   };
 }
 
 function getItemCardData(codeOrRow) {
   return PrintCardService.getItemCardData(codeOrRow);
-}
-
-function getGroupCardData(groupName) {
-  return PrintCardService.getGroupCardData(groupName);
 }
 
 function getUserQRModalData() {

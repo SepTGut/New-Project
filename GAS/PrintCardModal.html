@@ -213,15 +213,6 @@
       max-height: 14mm;
       object-fit: contain;
     }
-    .card-group-box .logo-container {
-      width: 46mm;
-      height: 18mm;
-    }
-    .card-group-box .logo-img {
-      max-width: 100%;
-      max-height: 16mm;
-      object-fit: contain;
-    }
 
     .hole-indicator {
       display: flex;
@@ -324,94 +315,6 @@
     .table-ledger .c-note { width: 23mm; }
 
     /* ========================================================
-       GROUP CARD (TCARD RIGHT HALF):
-       Exact 198mm x 138mm (2 Cards per A4 Sheet)
-       ======================================================== */
-    .grid-group-2 {
-      display: flex;
-      flex-direction: column;
-      gap: 3mm;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 100%;
-    }
-
-    .card-group-box {
-      width: 198mm;
-      height: 138mm;
-      border: 2px solid #000000;
-      padding: 3.5mm 5mm;
-      box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      position: relative;
-      background: #ffffff;
-      overflow: hidden;
-    }
-
-    .group-cut-divider {
-      width: 100%;
-      height: 1px;
-      border-top: 1px dashed #757575;
-      margin: 1mm 0;
-      position: relative;
-    }
-    .group-cut-divider::after {
-      content: '✂ POTONG DI SINI (A5 HALF PAGE)';
-      position: absolute;
-      top: -6px;
-      right: 10px;
-      font-size: 6pt;
-      background: #ffffff;
-      padding: 0 5px;
-      color: #757575;
-      font-weight: 700;
-    }
-
-    .qr-container {
-      width: 32mm;
-      height: 16mm;
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-    }
-    .qr-img {
-      width: 15mm;
-      height: 15mm;
-      object-fit: contain;
-    }
-
-    .table-group-ledger {
-      width: 100%;
-      border-collapse: collapse;
-      border: 1.5px solid #000000;
-      flex: 1;
-    }
-    .table-group-ledger th {
-      border: 1px solid #000000;
-      font-size: 7.5pt;
-      font-weight: 700;
-      padding: 1.2mm 1mm;
-      text-align: center;
-      background: #e0e0e0;
-      color: #000000;
-      height: 5mm;
-    }
-    .table-group-ledger td {
-      border: 1px solid #000000;
-      font-size: 7pt;
-      height: 4.8mm;
-      padding: 0 1.5mm;
-      vertical-align: middle;
-    }
-    .table-group-ledger .gc-no { width: 10mm; text-align: center; font-weight: 700; }
-    .table-group-ledger .gc-komat { width: 35mm; font-family: 'Roboto Mono', monospace; font-weight: 700; }
-    .table-group-ledger .gc-name { width: 75mm; }
-    .table-group-ledger .gc-mut { width: 35mm; text-align: center; }
-    .table-group-ledger .gc-stock { width: 35mm; text-align: center; font-family: 'Roboto Mono', monospace; font-weight: 700; }
-
-    /* ========================================================
        PRINT RULES (@media print)
        ======================================================== */
     @page {
@@ -461,7 +364,7 @@
   <div class="toolbar">
     <div class="toolbar-info">
       <span class="mode-badge">
-        <?= (data && data.mode === 'group') ? '📦 KARTU GROUP (2/A4)' : '🏷️ KARTU SINGLE (4/A4)' ?>
+        🏷️ KARTU MATERIAL (4/A4)
       </span>
       <span class="summary-badge">
         <?= (data && data.summary) ? data.summary : 'Siap Dicetak' ?>
@@ -484,8 +387,7 @@
 
   <!-- Dynamic Pages Container -->
   <div id="pagesContainer">
-    <? if (data && data.mode === 'single') { ?>
-      <!-- SINGLE ITEM CARDS: 4 CARDS PER A4 SHEET -->
+    <!-- MATERIAL CARDS: 4 CARDS PER A4 SHEET -->
       <? for (var p = 0; p < data.pages.length; p++) {
            var page = data.pages[p];
       ?>
@@ -566,100 +468,6 @@
           </div>
         </div>
       <? } ?>
-
-    <? } else if (data && data.mode === 'group') { ?>
-      <!-- GROUP CARDS: 2 CARDS PER A4 SHEET -->
-      <? for (var p = 0; p < data.pages.length; p++) {
-           var page = data.pages[p];
-      ?>
-        <div class="a4-sheet">
-          <div class="grid-group-2">
-            <? for (var c = 0; c < page.cards.length; c++) {
-                 var card = page.cards[c];
-                 var qrPayload = encodeURIComponent(card.isBlank ? 'GROUP-BLANK' : (card.qrValue || 'GROUP:N/A'));
-                 var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' + qrPayload;
-            ?>
-              <div class="card-group-box">
-                <!-- Diagonal Corner Cut Guidelines (45deg cutting line matching Tcard) -->
-                <svg class="cut-line cut-line-tl" viewBox="0 0 10 10" title="diagonal upr to btl">
-                  <line x1="0" y1="10" x2="10" y2="0" stroke="#616161" stroke-dasharray="2,1.5" stroke-width="0.8"/>
-                </svg>
-                <svg class="cut-line cut-line-tr" viewBox="0 0 10 10" title="diagonal upl to btr">
-                  <line x1="0" y1="0" x2="10" y2="10" stroke="#616161" stroke-dasharray="2,1.5" stroke-width="0.8"/>
-                </svg>
-
-                <div class="single-header">
-                  <div class="logo-container">
-                    <img src="<?!= (data.logo || data.logoUrl) ?>" class="logo-img" alt="Logo Rekaindo">
-                  </div>
-                  <div class="hole-indicator" title="Hole Punch Guide">
-                    <div class="hole-circle"></div>
-                    <span class="hole-lbl">HOLE</span>
-                  </div>
-                  <div class="qr-container">
-                    <? if (card.isBlank) { ?>
-                      <div style="font-size:8pt; color:#9e9e9e; font-style:italic;">[ QR CODE ]</div>
-                    <? } else { ?>
-                      <img src="<?= qrUrl ?>" class="qr-img" alt="QR Code">
-                    <? } ?>
-                  </div>
-                </div>
-
-                <div class="main-card-title" style="font-size:12.5pt;">KARTU STOCK MATERIAL Group</div>
-
-                <table class="meta-fields" style="font-size:9.5pt; margin-bottom:2.5mm;">
-                  <tr>
-                    <td class="lbl" style="width:30mm;">Kode Group :</td>
-                    <td class="txt"><?= card.isBlank ? '..................................................' : (card.groupName || '-') ?></td>
-                  </tr>
-                  <tr>
-                    <td class="lbl" style="width:30mm;">Deskription :</td>
-                    <td class="txt"><?= card.isBlank ? '..................................................' : (card.deskripsi || '-') ?></td>
-                  </tr>
-                </table>
-
-                <table class="table-group-ledger">
-                  <thead>
-                    <tr>
-                      <th class="gc-no">No</th>
-                      <th class="gc-komat">Komat</th>
-                      <th class="gc-name">Name</th>
-                      <th class="gc-mut">Mutasi</th>
-                      <th class="gc-stock">Stock</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <?
-                      var items = card.items || [];
-                      for (var r = 0; r < 15; r++) {
-                        var item = items[r];
-                    ?>
-                      <? if (item) { ?>
-                        <tr>
-                          <td class="gc-no"><?= r + 1 ?></td>
-                          <td class="gc-komat"><?= item.komat ?></td>
-                          <td class="gc-name"><?= item.name ?></td>
-                          <td class="gc-mut"></td>
-                          <td class="gc-stock"><?= item.qty ?> <?= item.uom ?></td>
-                        </tr>
-                      <? } else { ?>
-                        <tr>
-                          <td class="gc-no"><?= r + 1 ?></td>
-                          <td class="gc-komat"></td>
-                          <td class="gc-name"></td>
-                          <td class="gc-mut"></td>
-                          <td class="gc-stock"></td>
-                        </tr>
-                      <? } ?>
-                    <? } ?>
-                  </tbody>
-                </table>
-              </div>
-            <? } ?>
-          </div>
-        </div>
-      <? } ?>
-    <? } ?>
   </div>
 
   <script>
