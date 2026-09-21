@@ -25,8 +25,5 @@ services:
       - AUTH_FOLDER=/app/auth_info_baileys
       - DATA_DIR=/app/data
     volumes:
-      - wabot_auth:/app/auth_info_baileys
+      - ./wabot/auth_info_baileys:/app/auth_info_baileys
       - ./data/ppo:/app/data
-
-volumes:
-  wabot_auth:
