@@ -146,38 +146,59 @@ async function handleMessage(sock, msg) {
     }
 
     // =========================================================================
-    // 1. Help & Unified Main Menu
+    // 1. Help, Greetings & Unified Quick-Start Tutorial
     // =========================================================================
-    if (['menu', 'help', 'bantuan', 'panduan', 'start', 'halo', 'hai'].includes(cmd) && !ppoSession) {
+    if (['menu', 'help', 'bantuan', 'panduan', 'tutorial', 'readme', 'start', 'mulai', 'halo', 'hai', 'hey', 'helo', 'hello', 'hi', 'p', 'info', 'petunjuk'].includes(cmd) && !ppoSession) {
       const userStatus = session ? `🟢 Login sebagai *${session.name}* (${session.role})` : `⚪ Status: *Tamu (Belum Login)*`;
-      const menuText =
-`📦 *SMART WAREHOUSE & PPO BOT*
+      const tutorialText =
+`🤖 *PANDUAN & MENU BOT OPERASIONAL GUDANG & PPO*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Halo *${senderName}*!
+Halo *${senderName}*! Selamat datang di asisten otomatis gudang & lapangan.
 ${userStatus}
 
-Silakan pilih layanan yang ingin Anda gunakan:
+Bot ini melayani 2 sistem utama secara terintegrasi:
 
-📋 *1. LAPORAN PROGRESS PEKERJAAN (PPO):*
-• Ketik \`!lapor\` atau \`lapor\` : Mulai isi laporan progress lapangan
-• Ketik \`batal\` : Batalkan pengisian laporan kapan saja
-• Ketik \`!faq <topik>\` : Tanya jawab SOP teknis & kendala
+📦 *1. PENCARIAN & STOCK OPNAME GUDANG:*
+• *Cari Barang Langsung:*
+  Cukup ketik nama, kode material, atau lokasi rak.
+  _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk 64\`, atau \`RE02.1\`
+• *Perintah Cek Detail:*
+  \`!cek <kata_kunci>\`
+  _Contoh:_ \`!cek kabel NYM\`
+• *Update Stok Fisik (Opname):*
+  \`!opname <kode_material> <jumlah_baru>\`
+  _Contoh:_ \`!opname ITEM-1 50\` *(Perlu login petugas)*
+• *Tambah Material Baru (Admin):*
+  \`!tambah <rak> | <kode> | <nama> | <qty> | <uom> | <deskripsi>\`
 
-📦 *2. STOCK OPNAME GUDANG:*
-• Ketik nama barang, kode, atau rak langsung (contoh: \`wago\`, \`MCB\`, \`ITEM-1\`, \`san disk 64\`)
-• Atau gunakan perintah: \`!cek <kata_kunci>\`
-• \`!opname <kode> <qty>\` : Update stok fisik langsung (perlu login)
-• \`!tambah <rak>|<kode>|...\` : Tambah material baru (Admin)
+📋 *2. LAPORAN PROGRESS PEKERJAAN (PPO):*
+• *Mulai Pengisian Laporan:*
+  Ketik \`!lapor\` atau \`lapor\`
+  _Bot akan memandu langkah demi langkah: pilih nomor gedung, tentukan lantai/lokasi, uraian pekerjaan, progress (%), dan lampirkan foto dokumentasi._
+• *Batalkan Laporan:*
+  Ketik \`batal\` kapan saja jika ingin mengulang.
+• *Tanya Jawab SOP & Kendala:*
+  \`!faq <topik>\`
+  _Contoh:_ \`!faq lampu\`, \`!faq pipa\`
 
-🔐 *3. AKUN & SESI:*
-• \`!login <user> <pass>\` : Masuk akun petugas opname
-• \`!status\` : Cek profil login aktif
-• \`!logout\` : Keluar sesi
+🔐 *3. AKUN & KEAMANAN:*
+• \`!login <username> <password>\` : Masuk akun
+  _Contoh:_ \`!login admin admin123\` atau \`!login user1 user123\`
+• \`!status\` : Cek status & profil aktif Anda
+• \`!logout\` : Keluar sesi petugas
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-💡 _Ketik perintah atau langsung ketik nama/kode barang yang Anda cari._`;
+💡 *TIPS CEPAT:*
+Ketik kata kunci barang apa saja untuk langsung mencari material, atau ketik \`!lapor\` untuk memulai pelaporan progress!`;
 
-      await sock.sendMessage(from, { text: menuText }, { quoted: msg });
+      await sock.sendMessage(from, { text: tutorialText }, { quoted: msg });
+      return;
+    }
+
+    if ((['makasih', 'thanks', 'thx', 'tq'].includes(cmd) || cleanText.toLowerCase().startsWith('terima kasih')) && !ppoSession) {
+      await sock.sendMessage(from, {
+        text: `Sama-sama *${senderName}*! Senang bisa membantu. Ketik \`!menu\` jika membutuhkan bantuan lain. 😊`
+      }, { quoted: msg });
       return;
     }
 
