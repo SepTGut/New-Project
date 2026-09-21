@@ -108,9 +108,16 @@
       </div>
     </div>
 
-    <!-- Card Actions (Edit button for admin) -->
-    <div class="card-actions" v-if="isAdmin">
-      <button @click="toggleEdit" class="btn-edit">
+    <!-- Card Actions -->
+    <div class="card-actions">
+      <button
+        @click="shareToWhatsApp"
+        class="btn-wa"
+        title="Bagikan data material ke WhatsApp"
+      >
+        <span>💬</span> WA Share
+      </button>
+      <button v-if="isAdmin" @click="toggleEdit" class="btn-edit">
         {{ isEditing ? 'Tutup' : '✏️ Edit' }}
       </button>
     </div>
@@ -311,5 +318,18 @@ async function handleSaveEdit() {
 function handleImgError(idx) {
   // Graceful fallback for broken image links
   console.warn('Image load error at index', idx);
+}
+
+function shareToWhatsApp() {
+  const infoText =
+`📦 *INFO MATERIAL GUDANG*
+🏷️ *Kode Material :* ${kodeMaterial.value || '-'}
+📝 *Nama Barang   :* ${namaBarang.value || '-'}
+📍 *Lokasi Rak    :* ${lokasiRak.value || '-'}
+📊 *Jumlah Stok   :* ${qty.value} ${uom.value || ''}
+📄 *Deskripsi     :* ${deskripsi.value || '-'}`;
+
+  const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(infoText)}`;
+  window.open(waUrl, '_blank');
 }
 </script>

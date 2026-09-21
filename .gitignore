@@ -1,10 +1,50 @@
 # Environment Variables & Secrets
 .env
-.env.local
+.env.*
+!.env.example
+!*.env.example
 .clasprc.json
+secrets.toml
+*.pem
+*.key
 
-# Node & Build artifacts
+# WhatsApp Auth & Session Credentials (Critical)
+**/auth_info/
+**/auth_info_baileys/
+auth_info/
+auth_info_baileys/
+
+# PPO Runtime & Uploaded Media
+data/ppo/foto-laporan/*
+!data/ppo/foto-laporan/.gitkeep
+data/ppo/sesi-aktif.json
+data/ppo/*backup*
+data/ppo/*-backup.xlsx
+*.xlsx.bak
+*.bak
+
+# External / Merged Legacy Bot Folder
+ServerWAbotPPO/
+
+# Node & Build Artifacts
 node_modules/
+**/node_modules/
 dist/
+dist-ssr/
+build/
 *.log
+*.zip
+
+# Testing, Scratch & Tool Artifacts
+.playwright-mcp/
+playwright-report/
+test-results/
+scratch/
+
+# Editor & OS Artifacts
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

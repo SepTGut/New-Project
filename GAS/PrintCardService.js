@@ -4,35 +4,56 @@
  * Implements KPMscript native message prompt (ui.prompt) and server-rendered print workflow.
  */
 
+/**
+ * Retrieves the logo directly from Google Drive based on Script Properties LOGO_ID.
+ * Converts the Drive file blob to a Base64 data URI with script cache optimization.
+ */
+function getLogoSafe() {
+  const logoId = (typeof PRINT !== 'undefined' && PRINT.LOGO_ID) ? PRINT.LOGO_ID : CONFIG.LOGO_ID;
+
+  if (!logoId) {
+    throw new Error("LOGO_ID kosong.");
+  }
+
+  // 1. Check Script Cache to prevent duplicate DriveApp API calls
+  try {
+    const cached = CacheService.getScriptCache().get('APP_LOGO_' + logoId);
+    if (cached) return cached;
+  } catch (e) {}
+
+  // 2. Fetch directly from Google Drive
+  var file = DriveApp.getFileById(logoId);
+  var blob = file.getBlob();
+  var contentType = blob.getContentType();
+  var base64 = Utilities.base64Encode(blob.getBytes());
+  var dataUri = "data:" + contentType + ";base64," + base64;
+
+  // 3. Cache valid Base64 string for up to 6 hours (21600 seconds)
+  try {
+    if (dataUri.length < 100000) {
+      CacheService.getScriptCache().put('APP_LOGO_' + logoId, dataUri, 21600);
+    }
+  } catch (ce) {}
+
+  return dataUri;
+}
+
 const PrintCardService = {
   /**
    * Retrieves the official corporate logo:
-   * 1. Priority 1: High-res embedded Base64 data URI from LogoUri.js (official PT REKAINDO GLOBAL JASA / REKA INKA Group)
+   * 1. Priority 1: Dynamic Google Drive fetch via getLogoSafe() (configured in Script Properties LOGO_ID)
    * 2. Priority 2: Check if Tcard sheet has an embedded image directly placed on the sheet
-   * 3. Priority 3: Custom DriveApp LOGO_ID (if explicitly configured and not the old school ID)
-   * 4. Priority 4: KPMscript native vector SVG badge (fill="#16233B" REKAINDO)
+   * 3. Priority 3: Clean SVG badge fallback if LOGO_ID is not configured yet
    */
   getLogoDataUri: function() {
     const defaultSvgLogo = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='50' viewBox='0 0 120 50'><rect width='120' height='50' fill='%2316233B' rx='4'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='12' font-weight='bold' fill='%23FFFFFF'>REKAINDO</text></svg>";
 
-    // 1. Instant high-res embedded Base64 URI from LogoUri.js (official REKA INKA Group logo)
+    // 1. Dynamic logo directly from Google Drive via getLogoSafe()
     try {
-      if (typeof getRekaindoLogoDataUri === 'function') {
-        const uri = getRekaindoLogoDataUri();
-        if (uri && uri.indexOf('data:image') === 0) return uri;
-      }
-      if (typeof getTargetLogoDataUri === 'function') {
-        const uri = getTargetLogoDataUri();
-        if (uri && uri.indexOf('data:image') === 0) return uri;
-      }
-      if (typeof REKAINDO_LOGO_DATA_URI !== 'undefined' && REKAINDO_LOGO_DATA_URI && REKAINDO_LOGO_DATA_URI.indexOf('data:image') === 0) {
-        return REKAINDO_LOGO_DATA_URI;
-      }
-      if (typeof TARGET_LOGO_DATA_URI !== 'undefined' && TARGET_LOGO_DATA_URI && TARGET_LOGO_DATA_URI.indexOf('data:image') === 0) {
-        return TARGET_LOGO_DATA_URI;
-      }
-    } catch (e) {
-      Logger.log('getLogoDataUri LogoUri.js notice: ' + e.message);
+      const uri = getLogoSafe();
+      if (uri) return uri;
+    } catch (err) {
+      Logger.log('getLogoDataUri notice: ' + err.message);
     }
 
     // 2. Check if Tcard sheet has an embedded image placed directly by user
@@ -52,33 +73,7 @@ const PrintCardService = {
       Logger.log('Tcard sheet image check warning: ' + e.message);
     }
 
-    // 3. Fallback: DriveApp fetch if custom logoId configured (ignoring old school ID)
-    const logoId = CONFIG.LOGO_ID;
-    if (logoId && logoId !== '1UWZKajgW8l1vJX7pTL8kYuF7A6tprIjT' && logoId !== 'PASTE_YOUR_LOGO_FILE_ID_HERE') {
-      try {
-        const cache = CacheService.getScriptCache();
-        const cached = cache.get('APP_PRINT_LOGO_' + logoId);
-        if (cached) return cached;
-      } catch (e) {}
-
-      try {
-        const file = DriveApp.getFileById(logoId);
-        const blob = file.getBlob();
-        const contentType = blob.getContentType();
-        const base64 = Utilities.base64Encode(blob.getBytes());
-        const dataUrl = 'data:' + contentType + ';base64,' + base64;
-        try {
-          if (dataUrl.length < 100000) {
-            CacheService.getScriptCache().put('APP_PRINT_LOGO_' + logoId, dataUrl, 21600); // 6 hours
-          }
-        } catch (ce) {}
-        return dataUrl;
-      } catch (err) {
-        Logger.log('getLogoDataUri DriveApp warning: ' + err.message);
-      }
-    }
-
-    // 4. Default fallback: Clean SVG badge matching KPMscript pattern
+    // 3. Default SVG fallback (prevents modal crash if LOGO_ID is empty)
     return defaultSvgLogo;
   },
 

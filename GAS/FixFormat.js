@@ -8,7 +8,7 @@ function getSpreadsheetInstance() {
   try {
     const active = SpreadsheetApp.getActiveSpreadsheet();
     if (active) return active;
-  } catch (e) {}
+  } catch (e) { }
   if (CONFIG && CONFIG.SPREADSHEET_ID) {
     return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   }
@@ -19,7 +19,7 @@ function fixFormat() {
   const ss = getSpreadsheetInstance();
   const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
   if (!sheet) {
-    try { ss.toast('Sheet ' + CONFIG.SHEET_PICTFINDER + ' tidak ditemukan.', 'Error', 5); } catch (e) {}
+    try { ss.toast('Sheet ' + CONFIG.SHEET_PICTFINDER + ' tidak ditemukan.', 'Error', 5); } catch (e) { }
     return;
   }
 
@@ -36,7 +36,7 @@ function fixFormat() {
     titleRange.setFontFamily('Arial')
       .setFontSize(14)
       .setFontWeight('bold')
-      .setFontColor('#1A237E')
+      .setFontColor('#FFFFFF')
       .setHorizontalAlignment('center')
       .setVerticalAlignment('middle');
     sheet.setRowHeight(1, 28);
@@ -62,11 +62,12 @@ function fixFormat() {
     .setWrap(false);
   sheet.setRowHeight(CONFIG.HEADER_ROW, 32);
 
-  // 3. Data Rows & Auto-Repair Numbering Gaps
+  // 3. Data Rows & Auto-Repair Numbering Gaps & Formula Delimiters
   if (lastRow >= CONFIG.DATA_START_ROW) {
     const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
     const dataRange = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols);
     const dataValues = dataRange.getValues();
+    const fotoFormulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
 
     // Standard Font and vertical alignment
     dataRange.setFontFamily('Arial')
@@ -77,7 +78,7 @@ function fixFormat() {
     // Thin borders
     dataRange.setBorder(true, true, true, true, true, true, '#D0D5DD', SpreadsheetApp.BorderStyle.SOLID);
 
-    // Sequential numbering and zebra striping
+    // Sequential numbering, zebra striping, and formula repair
     for (let r = 0; r < numRows; r++) {
       const rowIdx = CONFIG.DATA_START_ROW + r;
       const rowVals = dataValues[r];
@@ -87,7 +88,7 @@ function fixFormat() {
       sheet.setRowHeight(rowIdx, 26);
 
       // Check if row has any content in columns 2 to 8
-      const hasContent = rowVals.slice(1, 8).some(function(v) {
+      const hasContent = rowVals.slice(1, 8).some(function (v) {
         return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
       });
 
@@ -96,6 +97,18 @@ function fixFormat() {
         const currentNo = rowVals[0];
         if (currentNo !== expectedNo) {
           sheet.getRange(rowIdx, CONFIG.COL.NO).setValue(expectedNo);
+        }
+
+        // Auto-repair Link Foto formula delimiter from comma (,) to semicolon (;)
+        const currentFormula = fotoFormulas[r][0];
+        if (currentFormula && currentFormula.toUpperCase().startsWith('=HYPERLINK')) {
+          const match = currentFormula.match(/=HYPERLINK\(\s*(["'].*?["'])\s*[,;]\s*(["'].*?["'])\s*\)/i);
+          if (match) {
+            const expectedFormula = '=HYPERLINK(' + match[1] + '; ' + match[2] + ')';
+            if (currentFormula !== expectedFormula) {
+              sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula(expectedFormula);
+            }
+          }
         }
       }
     }
@@ -132,5 +145,5 @@ function fixFormat() {
 
   try {
     ss.toast('Format sheet ' + CONFIG.SHEET_PICTFINDER + ' dan User berhasil distandarkan!', 'Sukses', 4);
-  } catch (e) {}
+  } catch (e) { }
 }

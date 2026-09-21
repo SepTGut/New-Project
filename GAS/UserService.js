@@ -182,5 +182,56 @@ const UserService = {
     }
 
     return users;
+  },
+
+  /**
+   * Verifies username and password against the User sheet
+   */
+  verifyUser: function(username, password) {
+    if (!username || !password) {
+      return { success: false, error: 'Username dan password wajib diisi.' };
+    }
+    const cleanUser = String(username).trim().toLowerCase();
+    const cleanPass = String(password).trim();
+
+    const ss = getSpreadsheetInstance();
+    const sheet = ss.getSheetByName(CONFIG.SHEET_USER);
+    if (!sheet) {
+      return { success: false, error: 'Sheet "' + CONFIG.SHEET_USER + '" tidak ditemukan.' };
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return { success: false, error: 'Tidak ada data akun pada sistem.' };
+    }
+
+    const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+    for (let i = 0; i < values.length; i++) {
+      const row = values[i];
+      const u = String(row[2] || '').trim().toLowerCase();
+      const p = String(row[5] || '').trim();
+      const status = String(row[6] || 'Active').trim().toLowerCase();
+
+      if (u === cleanUser) {
+        if (status === 'inactive' || status === 'nonaktif') {
+          return { success: false, error: 'Akun Anda dinonaktifkan.' };
+        }
+        if (p === cleanPass) {
+          return {
+            success: true,
+            user: {
+              no: row[0] || (i + 1),
+              name: String(row[1] || row[2]),
+              username: String(row[2]),
+              role: String(row[3] || 'User'),
+              email: String(row[4] || '')
+            }
+          };
+        } else {
+          return { success: false, error: 'Password tidak sesuai.' };
+        }
+      }
+    }
+    return { success: false, error: 'Username "' + username + '" tidak ditemukan.' };
   }
 };

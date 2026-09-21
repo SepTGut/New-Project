@@ -75,8 +75,22 @@
         </div>
 
         <!-- Initial Blank Query State -->
-        <div v-else-if="!searchQuery.trim()" class="alert-box" style="background: var(--card-bg); border: 1px solid var(--border);">
-          👋 Silakan ketik kata kunci atau gunakan <b>Scan Barcode</b> untuk memulai.
+        <div v-else-if="!searchQuery.trim()" class="alert-box" style="background: var(--card-bg); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span>👋 Cari apa saja: <b>Nama Barang</b>, <b>Kode Material</b>, <b>Lokasi Rak</b>, atau <b>No</b>.</span>
+            <button @click="searchQuery = '*'" class="btn-secondary" style="padding: 4px 10px; font-size: 12px; cursor: pointer;">
+              📦 Tampilkan Semua ({{ inventory.length }})
+            </button>
+          </div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--text-muted);">
+            <span>Contoh:</span>
+            <button @click="searchQuery = 'wago'" class="btn-chip" type="button">Wago</button>
+            <button @click="searchQuery = 'mcb'" class="btn-chip" type="button">MCB</button>
+            <button @click="searchQuery = 'san disk'" class="btn-chip" type="button">San Disk</button>
+            <button @click="searchQuery = 'relay'" class="btn-chip" type="button">Relay</button>
+            <button @click="searchQuery = 'ITEM-1'" class="btn-chip" type="button">ITEM-1</button>
+            <button @click="searchQuery = 'RE02.1'" class="btn-chip" type="button">Rak RE02.1</button>
+          </div>
         </div>
 
         <!-- Empty Results -->
@@ -170,11 +184,27 @@ const canAdd = computed(() => {
 });
 
 const filteredItems = computed(() => {
-  const q = normalizeText(searchQuery.value);
-  if (!q) return [];
+  const rawQ = String(searchQuery.value || '').trim().toLowerCase();
+  if (!rawQ) return [];
+  if (rawQ === '*' || rawQ === 'all' || rawQ === 'semua') return inventory.value;
+
+  // Split query into tokens by whitespace and common delimiters
+  const tokens = rawQ.split(/[\s,;|/]+/).filter(Boolean);
+  if (tokens.length === 0) return [];
 
   return inventory.value.filter((item) => {
-    return Object.values(item).some((val) => normalizeText(val).includes(q));
+    // Collect all values into a single searchable string
+    const fields = Object.values(item).map((val) => String(val || '').toLowerCase());
+    const combined = fields.join(' ');
+    const strippedCombined = combined.replace(/[^a-z0-9]/g, '');
+
+    // Every token must match either substring in combined text or stripped alphanumeric
+    return tokens.every((token) => {
+      if (combined.includes(token)) return true;
+      const strippedToken = token.replace(/[^a-z0-9]/g, '');
+      if (strippedToken && strippedCombined.includes(strippedToken)) return true;
+      return false;
+    });
   });
 });
 
@@ -259,5 +289,20 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+.btn-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-chip:hover {
+  background: rgba(139, 92, 246, 0.25);
+  color: #fff;
+  border-color: var(--accent);
 }
 </style>

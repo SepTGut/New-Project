@@ -108,7 +108,7 @@ function importFromSourceSheet() {
         qty ? (isNaN(Number(qty)) ? qty : Number(qty)) : '',
         uom,
         deskripsi,
-        photo ? '=HYPERLINK("' + photo + '", "Link")' : ''
+        photo ? '=HYPERLINK("' + photo + '"; "Link")' : ''
       ]);
     }
 
@@ -135,20 +135,282 @@ function importFromSourceSheet() {
 }
 
 // ==============================================================================
-// Web App REST Endpoints (doGet / doPost) for Remote Diagnostics & Sync
+// Web App REST Endpoints (doGet / doPost) for Remote Diagnostics, Bot & Sync
 // ==============================================================================
 
 function doGet(e) {
+  return handleApiRequest(e);
+}
+
+function doPost(e) {
+  return handleApiRequest(e);
+}
+
+function handleApiRequest(e) {
   try {
-    const action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action).toLowerCase() : 'sync';
+    let body = {};
+    if (e && e.postData && e.postData.contents) {
+      try {
+        body = JSON.parse(e.postData.contents);
+      } catch (err) {
+        // Not JSON or plain form, ignore
+      }
+    }
+    const params = Object.assign({}, (e && e.parameter) || {}, body);
+    const action = (params.action || 'sync').toString().toLowerCase();
 
     if (action === 'ping') {
-      return ContentService.createTextOutput(JSON.stringify({
+      return jsonResponse({
         success: true,
         status: 'online',
         spreadsheetId: CONFIG.SPREADSHEET_ID,
         timestamp: new Date().toISOString()
-      })).setMimeType(ContentService.MimeType.JSON);
+      });
+    }
+
+    if (action === 'login') {
+      const result = UserService.verifyUser(params.username, params.password);
+      return jsonResponse(result);
+    }
+
+    if (action === 'search') {
+      const q = String(params.q || params.query || '').trim().toLowerCase();
+      const ss = getSpreadsheetInstance();
+      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      if (!sheet) {
+        return jsonResponse({ success: false, error: 'Sheet PictFinder tidak ditemukan.' });
+      }
+      const lastRow = sheet.getLastRow();
+      if (lastRow < CONFIG.DATA_START_ROW) {
+        return jsonResponse({ success: true, count: 0, items: [] });
+      }
+
+      const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+      const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
+      const items = [];
+
+      for (let i = 0; i < values.length; i++) {
+        const row = values[i];
+        const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
+        const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
+        const rak = String(row[CONFIG.COL.LOKASI_RAK - 1] || '').trim();
+        const qty = row[CONFIG.COL.QTY - 1];
+        const uom = String(row[CONFIG.COL.UOM - 1] || '').trim();
+        const deskripsi = String(row[CONFIG.COL.DESKRIPSI - 1] || '').trim();
+        const rawLink = String(row[CONFIG.COL.LINK_FOTO - 1] || formulas[i][0] || '').trim();
+
+        const hasContent = row.slice(1, 7).some(function(v) {
+          return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
+        });
+        if (!hasContent && !kode) continue;
+
+        let isMatch = !q;
+        if (q) {
+          const noStr = String(row[CONFIG.COL.NO - 1] || (i + 1));
+          const rowText = (noStr + ' #' + noStr + ' ' + kode + ' ' + nama + ' ' + rak + ' ' + deskripsi + ' ' + uom).toLowerCase();
+          const strippedRow = rowText.replace(/[^a-z0-9]/g, '');
+          const qTokens = q.split(/[\s,;|/]+/).filter(function(t) { return t.length > 0; });
+
+          isMatch = qTokens.every(function(t) {
+            if (rowText.indexOf(t) !== -1) return true;
+            const strippedT = t.replace(/[^a-z0-9]/g, '');
+            return strippedT && strippedRow.indexOf(strippedT) !== -1;
+          });
+        }
+
+        if (isMatch) {
+          const fileId = extractDriveFileId(rawLink);
+          items.push({
+            no: row[CONFIG.COL.NO - 1] || (i + 1),
+            rowIndex: CONFIG.DATA_START_ROW + i,
+            lokasiRak: rak || '-',
+            kodeMaterial: kode,
+            namaBarang: nama,
+            qty: (qty !== '' && qty !== null && !isNaN(qty)) ? Number(qty) : 0,
+            uom: uom || 'PCS',
+            deskripsi: deskripsi || '-',
+            linkFoto: rawLink,
+            fileId: fileId,
+            imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : ''
+          });
+          if (items.length >= 50) break; // Limit to 50 for speed
+        }
+      }
+
+      return jsonResponse({
+        success: true,
+        count: items.length,
+        query: q,
+        items: items
+      });
+    }
+
+    if (action === 'check' || action === 'getitem') {
+      const code = String(params.kode || params.code || '').trim().toLowerCase();
+      if (!code) {
+        return jsonResponse({ success: false, error: 'Kode material diperlukan.' });
+      }
+      const ss = getSpreadsheetInstance();
+      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const lastRow = sheet.getLastRow();
+      if (lastRow < CONFIG.DATA_START_ROW) {
+        return jsonResponse({ success: false, error: 'Data material kosong.' });
+      }
+
+      const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+      const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
+
+      for (let i = 0; i < values.length; i++) {
+        const row = values[i];
+        const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
+        if (kode.toLowerCase() === code) {
+          const rawLink = String(row[CONFIG.COL.LINK_FOTO - 1] || formulas[i][0] || '').trim();
+          const fileId = extractDriveFileId(rawLink);
+          return jsonResponse({
+            success: true,
+            found: true,
+            item: {
+              no: row[CONFIG.COL.NO - 1] || (i + 1),
+              rowIndex: CONFIG.DATA_START_ROW + i,
+              lokasiRak: String(row[CONFIG.COL.LOKASI_RAK - 1] || '-').trim(),
+              kodeMaterial: kode,
+              namaBarang: String(row[CONFIG.COL.NAMA_BARANG - 1] || '-').trim(),
+              qty: Number(row[CONFIG.COL.QTY - 1]) || 0,
+              uom: String(row[CONFIG.COL.UOM - 1] || 'PCS').trim(),
+              deskripsi: String(row[CONFIG.COL.DESKRIPSI - 1] || '-').trim(),
+              linkFoto: rawLink,
+              fileId: fileId,
+              imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : ''
+            }
+          });
+        }
+      }
+      return jsonResponse({ success: false, found: false, error: 'Material "' + code + '" tidak ditemukan.' });
+    }
+
+    if (action === 'opname') {
+      const code = String(params.kode || params.code || '').trim().toLowerCase();
+      const newQty = Number(params.qty);
+      const user = String(params.user || params.username || 'WhatsApp User').trim();
+
+      if (!code) {
+        return jsonResponse({ success: false, error: 'Kode material diperlukan.' });
+      }
+      if (isNaN(newQty) || newQty < 0) {
+        return jsonResponse({ success: false, error: 'Qty fisik harus berupa angka positif.' });
+      }
+
+      const ss = getSpreadsheetInstance();
+      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const lastRow = sheet.getLastRow();
+      if (lastRow < CONFIG.DATA_START_ROW) {
+        return jsonResponse({ success: false, error: 'Data material kosong.' });
+      }
+
+      const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.KODE_MATERIAL, numRows, 1).getValues();
+
+      for (let i = 0; i < values.length; i++) {
+        const k = String(values[i][0] || '').trim();
+        if (k.toLowerCase() === code) {
+          const targetRow = CONFIG.DATA_START_ROW + i;
+          const oldQty = sheet.getRange(targetRow, CONFIG.COL.QTY).getValue();
+          sheet.getRange(targetRow, CONFIG.COL.QTY).setValue(newQty);
+
+          const nama = sheet.getRange(targetRow, CONFIG.COL.NAMA_BARANG).getValue();
+          const rak = sheet.getRange(targetRow, CONFIG.COL.LOKASI_RAK).getValue();
+          const uom = sheet.getRange(targetRow, CONFIG.COL.UOM).getValue();
+
+          return jsonResponse({
+            success: true,
+            kodeMaterial: k,
+            namaBarang: nama,
+            lokasiRak: rak,
+            oldQty: oldQty,
+            newQty: newQty,
+            uom: uom,
+            updatedBy: user,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+      return jsonResponse({ success: false, error: 'Kode material "' + code + '" tidak ditemukan di database.' });
+    }
+
+    if (action === 'add') {
+      const rak = String(params.rak || '').trim();
+      const kode = String(params.kode || '').trim();
+      const nama = String(params.nama || '').trim();
+      const qty = isNaN(Number(params.qty)) ? 0 : Number(params.qty);
+      const uom = String(params.uom || 'PCS').trim().toUpperCase();
+      const deskripsi = String(params.deskripsi || params.desk || '-').trim();
+      const user = String(params.user || params.username || 'Admin').trim();
+
+      if (!kode || !nama) {
+        return jsonResponse({ success: false, error: 'Kode material dan nama barang wajib diisi.' });
+      }
+
+      const ss = getSpreadsheetInstance();
+      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const lastRow = sheet.getLastRow();
+
+      // Check if code already exists
+      if (lastRow >= CONFIG.DATA_START_ROW) {
+        const existingCodes = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.KODE_MATERIAL, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
+        for (let i = 0; i < existingCodes.length; i++) {
+          if (String(existingCodes[i][0] || '').trim().toLowerCase() === kode.toLowerCase()) {
+            return jsonResponse({
+              success: false,
+              error: 'Kode material "' + kode + '" sudah ada. Gunakan !opname untuk mengubah stok.'
+            });
+          }
+        }
+      }
+
+      const targetRow = Math.max(lastRow + 1, CONFIG.DATA_START_ROW);
+      const nextNo = targetRow - CONFIG.DATA_START_ROW + 1;
+
+      // Auto check drive for image
+      let linkFormula = '';
+      let fileId = '';
+      const driveImgUrl = findDriveImageUrlByCode(kode);
+      if (driveImgUrl) {
+        linkFormula = '=HYPERLINK("' + driveImgUrl + '"; "Lihat Foto")';
+        fileId = extractDriveFileId(driveImgUrl);
+      }
+
+      sheet.getRange(targetRow, 1, 1, 8).setValues([[
+        nextNo,
+        rak || '-',
+        kode,
+        nama,
+        qty,
+        uom,
+        deskripsi,
+        linkFormula || '-'
+      ]]);
+
+      fixFormat();
+
+      return jsonResponse({
+        success: true,
+        item: {
+          no: nextNo,
+          lokasiRak: rak || '-',
+          kodeMaterial: kode,
+          namaBarang: nama,
+          qty: qty,
+          uom: uom,
+          deskripsi: deskripsi,
+          linkFoto: driveImgUrl || '',
+          fileId: fileId,
+          imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : ''
+        },
+        createdBy: user,
+        timestamp: new Date().toISOString()
+      });
     }
 
     // Default action: Run full system sync, repair headers, numbering, and user formulas
@@ -156,24 +418,36 @@ function doGet(e) {
     syncNoAndLinks();
     UserService.setupUsersSheet();
 
-    return ContentService.createTextOutput(JSON.stringify({
+    return jsonResponse({
       success: true,
       message: 'Sistem dan sheet berhasil diperbaiki serta disinkronisasi!',
       spreadsheetId: CONFIG.SPREADSHEET_ID,
       timestamp: new Date().toISOString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
 
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
+    return jsonResponse({
       success: false,
       error: err.message,
       timestamp: new Date().toISOString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
   }
 }
 
-function doPost(e) {
-  return doGet(e);
+function jsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function extractDriveFileId(str) {
+  if (!str) return '';
+  const s = String(str);
+  const m1 = s.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1 && m1[1]) return m1[1];
+  const m2 = s.match(/id=([a-zA-Z0-9_-]+)/);
+  if (m2 && m2[1]) return m2[1];
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(s)) return s;
+  return '';
 }
 
 // ==============================================================================

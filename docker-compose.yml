@@ -9,3 +9,24 @@ services:
       - "3000:80"
     environment:
       - NODE_ENV=production
+
+  stock-opname-wabot:
+    build:
+      context: ./wabot
+      dockerfile: Dockerfile
+    container_name: stock_opname_wabot
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK/exec
+      - DATABASE_CSV_URL=https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/export?format=csv&gid=1367299058
+      - AUTH_FOLDER=/app/auth_info_baileys
+      - DATA_DIR=/app/data
+    volumes:
+      - wabot_auth:/app/auth_info_baileys
+      - ./data/ppo:/app/data
+
+volumes:
+  wabot_auth:

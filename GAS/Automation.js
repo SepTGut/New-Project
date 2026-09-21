@@ -66,10 +66,21 @@ function handlePictFinderEdit(e, sheet) {
     // 2. Auto Hyperlink if Link Foto was pasted or edited
     if (startCol <= CONFIG.COL.LINK_FOTO && endCol >= CONFIG.COL.LINK_FOTO) {
       for (let r = effectiveStart; r <= endRow; r++) {
-        const val = String(sheet.getRange(r, CONFIG.COL.LINK_FOTO).getValue() || '').trim();
-        if (val && !val.startsWith('=HYPERLINK')) {
+        const cell = sheet.getRange(r, CONFIG.COL.LINK_FOTO);
+        const formula = cell.getFormula();
+        const val = String(cell.getValue() || '').trim();
+
+        if (formula && formula.toUpperCase().startsWith('=HYPERLINK')) {
+          const match = formula.match(/=HYPERLINK\(\s*(["'].*?["'])\s*[,;]\s*(["'].*?["'])\s*\)/i);
+          if (match) {
+            const expectedFormula = '=HYPERLINK(' + match[1] + '; ' + match[2] + ')';
+            if (formula !== expectedFormula) {
+              cell.setFormula(expectedFormula);
+            }
+          }
+        } else if (val && !val.toUpperCase().startsWith('=HYPERLINK')) {
           const cleanUrl = formatToDirectDriveUrl(val);
-          sheet.getRange(r, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + cleanUrl + '", "Link")');
+          cell.setFormula('=HYPERLINK("' + cleanUrl + '"; "Link")');
         }
       }
     }
@@ -83,7 +94,7 @@ function handlePictFinderEdit(e, sheet) {
           try {
             const matchedUrl = findDriveImageUrlByCode(kodeMaterial);
             if (matchedUrl) {
-              fotoCell.setFormula('=HYPERLINK("' + matchedUrl + '", "Link")');
+              fotoCell.setFormula('=HYPERLINK("' + matchedUrl + '"; "Link")');
             }
           } catch (de) {
             Logger.log('Drive lookup notice: ' + de.message);
@@ -232,17 +243,25 @@ function syncNoAndLinks() {
       const currentVal = rowVals[CONFIG.COL.LINK_FOTO - 1];
       const kodeMaterial = rowVals[CONFIG.COL.KODE_MATERIAL - 1];
 
-      if (currentFormula && currentFormula.startsWith('=HYPERLINK')) {
-        // Already formatted hyperlink
+      if (currentFormula && currentFormula.toUpperCase().startsWith('=HYPERLINK')) {
+        // Heal formulas using comma instead of semicolon delimiter
+        const match = currentFormula.match(/=HYPERLINK\(\s*(["'].*?["'])\s*[,;]\s*(["'].*?["'])\s*\)/i);
+        if (match) {
+          const expectedFormula = '=HYPERLINK(' + match[1] + '; ' + match[2] + ')';
+          if (currentFormula !== expectedFormula) {
+            sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula(expectedFormula);
+            updatedLinkCount++;
+          }
+        }
       } else if (currentVal && String(currentVal).trim() && String(currentVal).trim() !== '-') {
         const cleanUrl = formatToDirectDriveUrl(currentVal);
-        sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + cleanUrl + '", "Link")');
+        sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + cleanUrl + '"; "Link")');
         updatedLinkCount++;
       } else if (kodeMaterial && String(kodeMaterial).trim() !== '-') {
         try {
           const matched = findDriveImageUrlByCode(kodeMaterial);
           if (matched) {
-            sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + matched + '", "Link")');
+            sheet.getRange(rowIdx, CONFIG.COL.LINK_FOTO).setFormula('=HYPERLINK("' + matched + '"; "Link")');
             updatedLinkCount++;
           }
         } catch (de) {}

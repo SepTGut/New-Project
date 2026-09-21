@@ -58,6 +58,15 @@ const CONFIG = {
 };
 
 /**
+ * Print module configuration alias (matches KPMscript pattern)
+ */
+const PRINT = {
+  get LOGO_ID() {
+    return CONFIG.LOGO_ID;
+  }
+};
+
+/**
  * Utility to pre-seed Script Properties on demand
  */
 function initializeScriptProperties() {

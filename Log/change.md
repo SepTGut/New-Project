@@ -394,7 +394,141 @@ All notable changes and architectural transitions are documented in this file.
 - Pushed all 10 files to Google Apps Script via `@google/clasp push --force`.
 - Created **Version 21** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@21).
 
+---
 
+## [GAS v3.7: Fix Foto Link Formula Delimiter (Comma to Semicolon)] - 2026-09-21
+### Changes
+- **Formula Delimiter Alignment**:
+  - Replaced comma (`,`) with semicolon (`;`) in `=HYPERLINK("url"; "Link")` across all Google Apps Script modules to match Google Sheets locale syntax requirement and eliminate formula parse errors (`#ERROR!`).
+- **Auto-Healing for Existing Broken Formulas**:
+  - `GAS/Automation.js`:
+    - Updated `handlePictFinderEdit()` to write `=HYPERLINK("url"; "Link")` and auto-convert existing `,` delimited formulas on edit.
+    - Updated `syncNoAndLinks()` to scan existing data rows and auto-repair any comma-delimited `=HYPERLINK` formulas into proper semicolon syntax.
+  - `GAS/FixFormat.js`:
+    - Added automatic formula delimiter repair inside `fixFormat()` so running "Rapikan Format Sheet (Fix Format)" instantly heals any broken foto link formulas.
+  - `GAS/Code.js`:
+    - Updated `importFromSourceSheet()` to insert `=HYPERLINK("url"; "Link")` with `;`.
+### Deployment
+- Pushed all 10 files to Google Apps Script via `clasp push`.
+- Created **Version 22** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@22).
 
+---
 
+## [GAS v3.8: Dynamic Drive Logo Refactor (`getLogoSafe`) & Deleted LogoUri.js] - 2026-09-21
+### Changes
+- **Implemented `getLogoSafe()` Engine**:
+  - Implemented standalone `getLogoSafe()` in `GAS/PrintCardService.js` that retrieves the logo file directly from Google Drive using `DriveApp.getFileById(logoId)`.
+  - Converts the file blob to a Base64 data URI (`data:<contentType>;base64,<base64>`).
+  - Integrated 6-hour `CacheService` (`APP_LOGO_<id>`) to eliminate redundant DriveApp calls and prevent rate limiting.
+- **Support for Script Properties & Config Alias**:
+  - Automatically retrieves `LOGO_ID` from Script Properties via `CONFIG.LOGO_ID` / `PRINT.LOGO_ID`.
+  - Added `PRINT` configuration alias in `GAS/Config.js` (`PRINT.LOGO_ID -> CONFIG.LOGO_ID`).
+  - Graceful fallback to default vector SVG badge if `LOGO_ID` is not yet configured, preventing print dialog crashes.
+- **Repository Cleanup**:
+  - Permanently deleted `GAS/LogoUri.js` (removed 40KB hardcoded Base64 payload).
+  - Codebase streamlined to 9 modular files.
+### Deployment
+- Pushed 9 modular files to Google Apps Script via `clasp push`.
+- Created **Version 23** and deployed to active deployment `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK` (@23).
+
+---
+
+## [v4.0: Two-Way Interactive WhatsApp Bot & Podman Dual-Service Stack] - 2026-09-21
+### Summary
+Added complete WhatsApp compatibility to the Smart Warehouse system, consisting of a self-hosted two-way interactive WhatsApp Bot microservice (`wabot/`), enhanced Google Apps Script REST APIs, dual-container Podman orchestration, and a 1-click WhatsApp share feature in the web app.
+
+### Key Changes
+1. **WhatsApp Bot Microservice (`wabot/`)**:
+   - Built on `@whiskeysockets/baileys` (native multi-device WhatsApp protocol) with zero SaaS subscription fees.
+   - Built an Express web dashboard on port `3001` (`http://localhost:3001`) with:
+     - Real-time connection status pill (Connected / Waiting for QR / Disconnected).
+     - Live auto-refreshing QR Code pairing display.
+     - Interactive bot command simulator / playground for testing commands without scanning.
+     - Service telemetry & active sessions counter.
+   - Enforced IPv4 resolution priority (`dns.setDefaultResultOrder('ipv4first')` + `httpAgent/httpsAgent`) to prevent WSL2/Docker IPv6 timeouts (`ENETUNREACH`).
+   - Implemented in-memory caching for published CSV inventory to ensure sub-second response times.
+   - Implemented full command handler in `wabot/src/handlers/messageHandler.js`:
+     - `!menu` / `!help`: Comprehensive Indonesian command guide.
+     - `!login <user> <pass>`: Verifies credentials against Google Sheets `User` tab.
+     - `!logout`: Terminates active phone session.
+     - `!status`: Shows login role and operator name.
+     - `!cek <kode/nama>` / `!stok <kode/nama>`: Searches material, displays rack location, available qty, UoM, specification, and automatically fetches & attaches physical photos from Google Drive. Prioritizes exact matches.
+     - `!opname <kode> <qty>`: Real-time physical inventory count update directly into Google Sheets (requires login).
+     - `!tambah <rak>|<kode>|<nama>|<qty>|<uom>|<desk>`: Registers new material into Google Sheets (Admin only).
+
+2. **Google Apps Script Backend Enhancements**:
+   - Added `UserService.verifyUser(username, password)` in `GAS/UserService.js` to authenticate warehouse staff accounts while respecting hidden IT/IIT accounts.
+   - Implemented `handleApiRequest(e)` in `GAS/Code.js` supporting actions:
+     - `ping`: Health check.
+     - `search`: Filtered item retrieval with Drive photo ID extraction.
+     - `check`: Exact material lookup by code.
+     - `login`: User credential verification.
+     - `opname`: Direct Qty update by material code.
+     - `add`: Sequential item insertion with automatic Drive photo hyperlink matching.
+   - Deployed live updates to **Version 27** (`AKfycbxFzRD3yMRQ1FpCqnzx_J3WYiQ6wkI_CP5mfEZ6efy1j8ntMxGT4hy5rBvxHNvUUs8`).
+
+3. **Web Application WhatsApp Sharing**:
+   - Added **"💬 WA Share"** button on every inventory card in `web/src/components/ItemCard.vue`.
+   - Formats material code, name, rack location, qty, and description into a pre-filled `https://wa.me/?text=...` deep-link.
+   - Added `.btn-wa` styling with green accent matching modern WhatsApp brand guidelines in `web/src/assets/style.css`.
+
+4. **Podman Container Orchestration**:
+   - Updated `docker-compose.yml` with dual-container architecture:
+     - `stock_opname_app` (port `3000:80`) - Production Nginx web server.
+     - `stock_opname_wabot` (port `3001:3001`) - Node 20 WhatsApp bot service.
+     - Persistent volume `wabot_auth` to retain QR pairing credentials across container reboots.
+   - Verified both services running smoothly in Podman rootless WSL2 environment.
+
+---
+
+## [v4.1: Unified WhatsApp Bot & PPO Progress Reporting Integration] - 2026-09-21
+### Summary
+Merged the standalone PPO Job Progress Reporting bot (`ServerWAbotPPO`) into the primary Smart Warehouse WhatsApp bot service (`wabot/`), creating a **Single Unified WhatsApp Bot** for warehouse staff and PPO field technicians. Added dual local/cloud Excel persistence, an interactive multi-step reporting state machine, technical FAQ search, and an enhanced web dashboard with live report preview and 1-click Excel download.
+
+### Key Changes
+1. **Single Unified WhatsApp Bot Microservice (`wabot/`)**:
+   - Eliminated the need to maintain two separate phone numbers, WhatsApp sessions, or isolated containers.
+   - Unified Indonesian menu (`!menu` / `!help`) clearly presenting both operational modules:
+     - **Modul 1 (Stock Opname Gudang)**: `!cek`, `!opname`, `!tambah`, `!login`, `!status`, `!logout`.
+     - **Modul 2 (PPO Job Progress Reporting)**: `!lapor` (interactive 7-step guided workflow), `!faq <query>`, `batal`.
+   - Ported and hardened PPO engine in `wabot/src/ppoService.js`:
+     - Built-in offset parser (`{ range: 1, defval: null }`) and column fill-down resolver for `data-titik-lokasi.xlsx` supporting all 36 buildings, sub-jobs, and locations.
+     - Cell-embedded photo reporting into local Excel (`data/ppo/laporan-progress.xlsx`) via `exceljs`, with automatic backup workbook generation via `xlsx`.
+     - In-memory FAQ query engine and recent reports query resolver.
+     - User session state persistence (`sesi-aktif.json`) with interactive 7-step state machine: Gedung -> Sub Pekerjaan -> Titik Lokasi -> Progres (%) -> Status -> Kendala -> Foto Dokumentasi.
+
+2. **Web Dashboard & REST API (`:3001`)**:
+   - **Recent Reports Table**: Real-time table displaying timestamp, reporter, building, sub-job, progress %, status, issues, and photo indicators.
+   - **1-Click Excel Download**: Direct browser download button (`/api/reports/download`) to retrieve `laporan-progress.xlsx` instantly without terminal access.
+   - **Interactive Web Simulator**: Updated with quick-command chips for both Warehouse Stock (`!cek ITEM-1`, `!opname ...`) and PPO Reporting (`!lapor`, `1`, `batal`, `!faq ac`).
+
+3. **Podman Multi-Container Orchestration & Volumes**:
+   - Updated `docker-compose.yml`:
+     - Mounted host directory `./data/ppo:/app/data` with environment variable `DATA_DIR=/app/data`.
+     - Ensured local Excel files (`./data/ppo/laporan-progress.xlsx`) and photos (`./data/ppo/foto-laporan/`) remain directly accessible and editable on the Windows host.
+   - Preserved zero port conflicts by maintaining single dashboard port `3001` alongside Vue 3 app on `3000`.
+
+---
+
+## [v4.2: Universal Multi-Token Search & Direct WhatsApp Querying] - 2026-09-21
+### Summary
+Upgraded search intelligence across the entire ecosystem (WhatsApp Bot, Vue 3 Web Application, and Google Apps Script API). Users can now search by **anything** — material name, material code, rack location, item number, or description — with multi-token keyword splitting, order-independent matching, and direct query texting without requiring the `!cek` prefix.
+
+### Key Changes
+1. **WhatsApp Bot Direct Search (`wabot/`)**:
+   - **Direct Plain Text Search**: Users can send plain messages (e.g. `wago`, `san disk 64`, `mcb abb`, `ITEM-1`, `baut m8`) without needing to type `!cek`. The bot automatically searches inventory and sends back the exact material card or a numbered list of matches.
+   - **Multi-Token Scoring Engine (`dataService.js`)**:
+     - Splits query into separate keywords (e.g. `wago 413` matches `Wago 769-413`; `RE02 wago` matches Wago items in rack `RE02.1`).
+     - Normalizes punctuation, hyphens, and spaces so `ITEM 1`, `ITEM-1`, `item1`, and `#1` all resolve identically.
+     - Ranks exact matches (`score: 100`) at the top, followed by prefix matches and multi-field combinations.
+     - Automatically assigns `ITEM-${no}` fallback for items with blank/hyphen codes.
+
+2. **Web Application Search (`web/src/App.vue`)**:
+   - Upgraded `filteredItems` to universal multi-token search across all item fields.
+   - Added helpful search suggestion chips (`Wago`, `MCB`, `San Disk`, `Relay`, `ITEM-1`, `Rak RE02.1`) in the initial state.
+   - Added **"📦 Tampilkan Semua"** button allowing users to view the full inventory catalog with a single click.
+
+3. **Google Apps Script Backend API (`GAS/Code.js`)**:
+   - Updated `action=search` endpoint to use multi-token scanning across all 8 columns (`No`, `Lokasi Rak`, `Kode Material`, `Nama Barang`, `Qty`, `UoM`, `Deskripsi`, `Link Foto`).
+   - Pushed via clasp and deployed as **Version 28** (`AKfycbwYQSEzqmij2rD00ITG_39csE3vARolrFFMRm2Xt11fkqYx85RBkvlNszhfEkaxaMvb`).
 
