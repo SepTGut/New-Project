@@ -165,7 +165,13 @@ function getVal(keywords) {
 }
 
 const lokasiRak = computed(() => getVal(['lokasi rak', 'lokasi', 'rak']));
-const kodeMaterial = computed(() => getVal(['kode material', 'kode']));
+const itemNo = computed(() => getVal(['no', 'nomor', 'number', '#']));
+const kodeMaterial = computed(() => {
+  const val = getVal(['kode material', 'kode']);
+  if (val && val !== '-') return val;
+  const num = itemNo.value;
+  return num ? `ITEM-${num}` : (val || '-');
+});
 const namaBarang = computed(() => getVal(['nama barang', 'nama']));
 const qty = computed(() => getVal(['qty', 'jumlah']) || '0');
 const uom = computed(() => getVal(['uom', 'satuan']) || '');
@@ -218,7 +224,7 @@ const editData = reactive({
 function toggleEdit() {
   if (!isEditing.value) {
     editData.lokasiRak = lokasiRak.value;
-    editData.kodeMaterial = kodeMaterial.value;
+    editData.kodeMaterial = kodeMaterial.value && kodeMaterial.value !== '-' ? kodeMaterial.value : (itemNo.value ? `ITEM-${itemNo.value}` : '');
     editData.namaBarang = namaBarang.value;
     editData.qty = parseInt(qty.value, 10) || 0;
     editData.uom = uom.value;
@@ -282,6 +288,7 @@ async function handleSaveEdit() {
 
     const res = await submitUpdateItem({
       kodeMaterialAsli: kodeMaterial.value,
+      no: itemNo.value,
       lokasiRak: editData.lokasiRak,
       kodeMaterial: editData.kodeMaterial,
       namaBarang: editData.namaBarang,

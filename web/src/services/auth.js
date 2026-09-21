@@ -11,6 +11,11 @@ const DEFAULT_USERS = [
     role: 'admin'
   },
   {
+    username: 'user1',
+    passwordHash: 'e606e38b0d8c19b24cf0ee3808183162ea7cd63ff7912dbb22b5e803286b4446',
+    role: 'staff'
+  },
+  {
     username: 'staff',
     passwordHash: '10176e7b7b24d317acfcf8d2064cfd2f24e154f7b5a96603077d5ef813d6a6b6',
     role: 'staff'
@@ -38,17 +43,19 @@ export async function login(username, password) {
 
   // Strategy 1: Remote verification against Google Sheets "Users" tab
   try {
-    const res = await authenticateViaApi(cleanUsername, enteredHash);
+    const res = await authenticateViaApi(cleanUsername, enteredHash, password);
     if (res && res.success && res.user) {
+      const rawRole = String(res.user.role || '').toLowerCase();
+      const role = rawRole === 'admin' ? 'admin' : 'staff';
       const sessionData = {
         username: res.user.username,
-        role: res.user.role || 'staff',
+        role: role,
         loggedInAt: Date.now()
       };
       localStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
       return { success: true, user: sessionData };
-    } else if (res && res.message && res.message !== 'Koneksi server gagal') {
-      return { success: false, message: res.message };
+    } else if (res && (res.error || res.message) && res.message !== 'Koneksi server gagal') {
+      return { success: false, message: res.error || res.message };
     }
   } catch (apiErr) {
     console.warn('Remote authentication failed or offline, checking local accounts:', apiErr);

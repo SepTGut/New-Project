@@ -4,6 +4,35 @@ All notable changes and architectural transitions are documented in this file.
 
 ---
 
+## [Comprehensive Code Review, Update Action, & Dual Auth Sync] - 2026-09-21
+### Completed
+- **Google Apps Script (`GAS/Code.js`, `GAS/UserService.js`)**:
+  - **Implemented `action === 'update'` Endpoint**: Resolved missing update action in Google Apps Script that previously prevented item edits from `ItemCard.vue`.
+  - **Conflict Prevention**: Validated unique `Kode Material` before saving edits to prevent overwriting existing material codes.
+  - **Google Drive Photo Uploads**: Added `saveBase64ImageToDrive` supporting Base64 data URLs for both Foto 1 and Foto 2, saving directly into `CONFIG.DRIVE_FOLDER_ID`.
+  - **Hyperlink Formula Concatenation**: Formula in `Link Foto` cell formatted with Indonesian Google Sheets semicolon delimiter: `=HYPERLINK("url1"; "Foto 1") & ", " & HYPERLINK("url2"; "Foto 2")`.
+  - **Drive Photo Renaming on Code Change**: Added `renameDrivePhotoByCode` to automatically rename existing Google Drive photo files when `Kode Material` is updated.
+  - **Real-Time JSON Inventory (`action === 'inventory'`)**: Added live inventory endpoint returning all items directly as JSON for 0-second real-time sync.
+  - **Dual Password Authentication**: Added `computeSha256` in `UserService.js` using `Utilities.computeDigest` to verify both plain text passwords (used by WhatsApp Bot) and SHA-256 hashes (used by Vue 3 Web App).
+  - **Apps Script Deployment**: Deployed Version 29 to active deployment ID `AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK`.
+- **Vue 3 Web App (`web/`)**:
+  - `web/src/components/ItemCard.vue`:
+    - Enhanced `kodeMaterial` computed property so empty or `'-'` values automatically fall back to `ITEM-${item.No || item.no}`.
+    - Pre-populated `editData.kodeMaterial` properly when opening the inline edit form.
+    - Updated `handleSaveEdit` to pass both `kodeMaterialAsli` and `no` for exact row matching in Google Sheets.
+  - `web/src/services/api.js`:
+    - Updated `authenticateViaApi` signature and payload to pass `password` alongside `passwordHash`.
+  - `web/src/services/auth.js`:
+    - Synchronized `login` to pass both plain password and SHA-256 hash.
+    - Normalized role mapping so Google Sheets accounts (`Admin`, `User`, `Staff`) map cleanly to `'admin'` or `'staff'`.
+    - Added `user1` account hash to `DEFAULT_USERS` for complete offline and development fallback parity.
+- **Container Build & Live Browser Verification**:
+  - Rebuilt production assets with `npm run build` in 3.96s.
+  - Rebuilt and restarted `stock_opname_app` container via Podman.
+  - Verified full UI flow in browser subagent on WSL2 endpoint (`http://172.22.249.94:3000/`): all 64 items rendered, `ITEM-1` through `ITEM-64` badges display cleanly, and inline edit modal pre-populates all fields.
+
+---
+
 ## [Initial Setup & Baseline Audit] - 2026-09-16
 ### Added
 - Created `.streamlit/secrets.toml` with default SHA-256 hashed `admin` and `staff` user accounts.

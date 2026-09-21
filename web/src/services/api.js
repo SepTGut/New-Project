@@ -4,7 +4,7 @@ const DATABASE_URL = import.meta.env.VITE_DATABASE_URL ||
   'https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/export?format=csv&gid=1367299058';
 
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL ||
-  'https://script.google.com/macros/s/AKfycbwlF3YI9-Npgr0MaL9M_ZtYC7MCQP2AWG9qzJ77cFHsM9X0O3dbnpP-wfIJTpGybeT7/exec';
+  'https://script.google.com/macros/s/AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK/exec';
 
 const API_KEY = import.meta.env.VITE_API_KEY || '';
 const OFFLINE_CACHE_KEY = 'cached_stock_inventory';
@@ -117,10 +117,11 @@ async function callAppsScript(payload) {
 /**
  * Authenticates user credentials against the "Users" sheet
  */
-export async function authenticateViaApi(username, passwordHash) {
+export async function authenticateViaApi(username, passwordHash, password) {
   const payload = {
     action: 'login',
     username: username,
+    password: password,
     passwordHash: passwordHash
   };
   return await callAppsScript(payload);

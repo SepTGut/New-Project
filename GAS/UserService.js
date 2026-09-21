@@ -185,14 +185,16 @@ const UserService = {
   },
 
   /**
-   * Verifies username and password against the User sheet
+   * Verifies username and password against the User sheet.
+   * Supports both plain text password and SHA-256 hash matching.
    */
-  verifyUser: function(username, password) {
-    if (!username || !password) {
+  verifyUser: function(username, password, passwordHash) {
+    if (!username || (!password && !passwordHash)) {
       return { success: false, error: 'Username dan password wajib diisi.' };
     }
     const cleanUser = String(username).trim().toLowerCase();
-    const cleanPass = String(password).trim();
+    const cleanPass = String(password || '').trim();
+    const targetHash = String(passwordHash || '').trim().toLowerCase();
 
     const ss = getSpreadsheetInstance();
     const sheet = ss.getSheetByName(CONFIG.SHEET_USER);
@@ -216,7 +218,29 @@ const UserService = {
         if (status === 'inactive' || status === 'nonaktif') {
           return { success: false, error: 'Akun Anda dinonaktifkan.' };
         }
-        if (p === cleanPass) {
+
+        // Match either plain password or computed SHA-256 hash
+        let isMatch = false;
+        if (cleanPass && p === cleanPass) {
+          isMatch = true;
+        } else if (targetHash) {
+          if (p.toLowerCase() === targetHash) {
+            isMatch = true;
+          } else {
+            const computed = computeSha256(p);
+            if (computed === targetHash) {
+              isMatch = true;
+            }
+          }
+        } else if (cleanPass) {
+          // If password in sheet happens to be stored as hash
+          const computed = computeSha256(cleanPass);
+          if (p.toLowerCase() === computed) {
+            isMatch = true;
+          }
+        }
+
+        if (isMatch) {
           return {
             success: true,
             user: {
@@ -235,3 +259,20 @@ const UserService = {
     return { success: false, error: 'Username "' + username + '" tidak ditemukan.' };
   }
 };
+
+/**
+ * Computes SHA-256 hexadecimal hash string
+ */
+function computeSha256(text) {
+  if (!text) return '';
+  const rawBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+  let hexString = '';
+  for (let i = 0; i < rawBytes.length; i++) {
+    let byteVal = rawBytes[i];
+    if (byteVal < 0) byteVal += 256;
+    let byteHex = byteVal.toString(16);
+    if (byteHex.length === 1) byteHex = '0' + byteHex;
+    hexString += byteHex;
+  }
+  return hexString;
+}
