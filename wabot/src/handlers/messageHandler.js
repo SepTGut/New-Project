@@ -204,6 +204,32 @@ async function handleMessage(sock, msg) {
     }
 
     // =========================================================================
+    // 0.4. Public Web URL Command: !link / link / url / alamat / web
+    // Fetches the live Cloudflare Tunnel URL from the cloudflared metrics API
+    // =========================================================================
+    if (['link', 'url', 'alamat', 'web'].includes(cmd) && !ppoSession) {
+      try {
+        // cloudflared exposes live tunnel info at http://cloudflared:2000/quicktunnel
+        const cfRes = await axios.get('http://cloudflared:2000/quicktunnel', { timeout: 4000 });
+        const hostname = cfRes.data && cfRes.data.hostname;
+        if (hostname) {
+          await sock.sendMessage(from, {
+            text: `🌐 *Link Akses Web Gudang (Internet):*\n\nhttps://${hostname}\n\n📱 _Bisa dibuka dari HP/laptop manapun tanpa VPN._\n⚠️ _URL berubah setiap kali server di-restart._`
+          }, { quoted: msg });
+        } else {
+          await sock.sendMessage(from, {
+            text: '⏳ *Tunnel sedang memuat...*\nCoba lagi dalam 30 detik setelah server baru menyala.'
+          }, { quoted: msg });
+        }
+      } catch (e) {
+        await sock.sendMessage(from, {
+          text: `⚠️ *Tunnel tidak aktif atau belum siap.*\n\nAkses lokal:\n• http://localhost:3000 (Web)\n• http://localhost:3001/dashboard (Bot)\n\n_Error: ${e.message}_`
+        }, { quoted: msg });
+      }
+      return;
+    }
+
+    // =========================================================================
     // 0.5. Dedicated Image Request Trigger: G / !g / !gambar / !foto (Text Only)
     // (Only includes photo when user explicitly requests with 'G')
     // =========================================================================
@@ -484,6 +510,12 @@ _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk\`, \`RE02.1\`
 • \`!login <user> <pass>\` ➔ Masuk akun petugas
 • \`!status\` ➔ Periksa profil & hak akses aktif
 • \`!logout\` ➔ Keluar sesi
+
+━━━━━━━━━━━━━━━━━━━━
+
+🌐 *AKSES INTERNET*
+• \`link\` atau \`url\`
+  ➔ Dapatkan URL publik untuk buka Web Gudang dari internet / HP luar jaringan
 
 ━━━━━━━━━━━━━━━━━━━━
 💡 _Ketik *!panduan* untuk tutorial lengkap langkah demi langkah._

@@ -34,9 +34,10 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflare_tunnel
     restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    # Free random URL tunnel - no domain/account needed
+    # Metrics API on port 2000 lets the bot fetch the live URL via:
+    #   GET http://cloudflared:2000/quicktunnel -> {"hostname":"abc123.trycloudflare.com"}
+    command: tunnel --no-autoupdate --url http://stock-opname-web:80 --metrics 0.0.0.0:2000
     depends_on:
       - stock-opname-web
       - stock-opname-wabot
-    env_file:
-      - ./.env
