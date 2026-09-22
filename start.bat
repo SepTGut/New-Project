@@ -42,9 +42,8 @@ echo   - Web Aplikasi  : http://localhost:3000
 echo   - Bot Dashboard : http://localhost:3001/dashboard
 echo.
 echo   INTERNET (Publik):
-echo   - URL Permanen sudah aktif via Cloudflare Tunnel
-echo   - Cek Cloudflare Dashboard untuk URL domain-mu:
-echo     https://dash.cloudflare.com -> Zero Trust -> Tunnels
+echo   - Ketik 'link' di WhatsApp bot untuk mendapatkan URL publik otomatis!
+echo   - Atau cek log tunnel via: docker compose logs cloudflared
 echo.
 echo   3 Container berjalan:
 echo     stock_opname_app    (Web)

@@ -26,6 +26,7 @@ services:
       - DATABASE_CSV_URL=https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/export?format=csv&gid=1367299058
       - AUTH_FOLDER=/app/auth_info_baileys
       - DATA_DIR=/app/data
+      - PUBLIC_WEB_URL=${PUBLIC_WEB_URL:-}
     volumes:
       - ./wabot/auth_info_baileys:/app/auth_info_baileys
       - ./data/ppo:/app/data
@@ -35,9 +36,10 @@ services:
     container_name: cloudflare_tunnel
     restart: unless-stopped
     # Free random URL tunnel - no domain/account needed
-    # Metrics API on port 2000 lets the bot fetch the live URL via:
+    # Protocol http2 prevents ISP UDP port 7844 blocking
+    # Metrics API on port 2000 lets the bot fetch live URL via:
     #   GET http://cloudflared:2000/quicktunnel -> {"hostname":"abc123.trycloudflare.com"}
-    command: tunnel --no-autoupdate --url http://stock-opname-web:80 --metrics 0.0.0.0:2000
+    command: tunnel --no-autoupdate --protocol http2 --url http://stock-opname-web:80 --metrics 0.0.0.0:2000
     depends_on:
       - stock-opname-web
       - stock-opname-wabot

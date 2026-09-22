@@ -205,9 +205,18 @@ async function handleMessage(sock, msg) {
 
     // =========================================================================
     // 0.4. Public Web URL Command: !link / link / url / alamat / web
-    // Fetches the live Cloudflare Tunnel URL from the cloudflared metrics API
+    // Fetches the live Cloudflare Tunnel URL from metrics API or env var
     // =========================================================================
     if (['link', 'url', 'alamat', 'web'].includes(cmd) && !ppoSession) {
+      const configuredUrl = process.env.PUBLIC_WEB_URL;
+      if (configuredUrl) {
+        const fullUrl = configuredUrl.startsWith('http') ? configuredUrl : `https://${configuredUrl}`;
+        await sock.sendMessage(from, {
+          text: `🌐 *Link Akses Web Gudang (Permanen):*\n\n${fullUrl}\n\n📱 _Bisa dibuka dari HP/laptop manapun tanpa VPN._`
+        }, { quoted: msg });
+        return;
+      }
+
       try {
         // cloudflared exposes live tunnel info at http://cloudflared:2000/quicktunnel
         const cfRes = await axios.get('http://cloudflared:2000/quicktunnel', { timeout: 4000 });
@@ -223,7 +232,7 @@ async function handleMessage(sock, msg) {
         }
       } catch (e) {
         await sock.sendMessage(from, {
-          text: `⚠️ *Tunnel tidak aktif atau belum siap.*\n\nAkses lokal:\n• http://localhost:3000 (Web)\n• http://localhost:3001/dashboard (Bot)\n\n_Error: ${e.message}_`
+          text: `⚠️ *Tunnel online belum terdeteksi.*\n\nJika menggunakan domain Cloudflare sendiri, tentukan \`PUBLIC_WEB_URL\` di file \`.env\`.\n\nAkses lokal LAN:\n• Web: http://localhost:3000\n• Bot: http://localhost:3001/dashboard`
         }, { quoted: msg });
       }
       return;
