@@ -15,6 +15,7 @@ const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
 const { handleMessage } = require('./handlers/messageHandler');
+const logger = require('./logger');
 
 const AUTH_FOLDER = process.env.AUTH_FOLDER || path.join(__dirname, '../auth_info_baileys');
 
@@ -34,6 +35,9 @@ const botState = {
  */
 async function startBot() {
   try {
+    logger.banner();
+    logger.info('SOCKET', 'Inisialisasi koneksi WhatsApp Multi-Device...');
+
     if (!fs.existsSync(AUTH_FOLDER)) {
       fs.mkdirSync(AUTH_FOLDER, { recursive: true });
     }
@@ -74,9 +78,9 @@ async function startBot() {
             width: 340
           });
         } catch (qrErr) {
-          console.error('Error generating QR Data URL:', qrErr);
+          logger.error('QR', 'Gagal membuat QR Data URL', qrErr);
         }
-        console.log('📱 WhatsApp Pairing QR Code generated! Scan from phone or visit dashboard.');
+        logger.info('QR-PAIR', 'Kode QR WhatsApp Pairing siap! Pindai via WhatsApp atau buka Dashboard web.');
       }
 
       if (connection === 'close') {
@@ -88,15 +92,16 @@ async function startBot() {
         botState.connectedUser = null;
         botState.lastDisconnectReason = lastDisconnect?.error?.message || `Status code: ${statusCode}`;
 
-        console.log(`Connection closed: ${botState.lastDisconnectReason} (Status code: ${statusCode})`);
+        logger.warn('SOCKET', `Koneksi terputus: ${botState.lastDisconnectReason} (Status: ${statusCode})`);
 
         if (isLoggedOut) {
-          console.log('⚠️ Sesi WhatsApp kedaluwarsa/logout. Membersihkan sesi dan membuat QR baru...');
+          logger.warn('AUTH', 'Sesi WhatsApp kedaluwarsa/logout. Membersihkan auth dan membuat QR baru...');
           clearAuthFolder();
           // Restart to generate fresh pairing QR code
           setTimeout(startBot, 2000);
         } else {
           // Temporary network hiccup, auto-reconnect
+          logger.info('SOCKET', 'Mencoba koneksi ulang otomatis dalam 4 detik...');
           setTimeout(startBot, 4000);
         }
       } else if (connection === 'open') {
@@ -105,7 +110,7 @@ async function startBot() {
         botState.qrDataUrl = '';
         botState.connectedUser = sock.user;
         const phoneNum = sock.user?.id ? sock.user.id.split(':')[0] : 'Unknown';
-        console.log(`✅ WhatsApp Bot connected successfully as +${phoneNum}!`);
+        logger.info('AUTH', `WhatsApp Bot TERHUBUNG sebagai +${phoneNum}!`, { nama: sock.user?.name || '-' });
       }
     });
 
@@ -140,12 +145,12 @@ function clearAuthFolder() {
       try {
         fs.rmSync(fullPath, { recursive: true, force: true });
       } catch (e) {
-        console.warn('Could not remove auth file:', fullPath, e.message);
+        logger.warn('AUTH', `Tidak dapat menghapus file sesi: ${fullPath} (${e.message})`);
       }
     }
-    console.log(`✅ Auth folder cleared (${entries.length} files removed).`);
+    logger.info('AUTH', `Folder auth dibersihkan (${entries.length} file dihapus).`);
   } catch (err) {
-    console.error('Error clearing auth folder contents:', err.message);
+    logger.error('AUTH', 'Gagal membersihkan isi folder auth', err);
   }
 }
 

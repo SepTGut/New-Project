@@ -12,12 +12,25 @@ require('dotenv').config();
 const { startBot, botState, resetAuthSession } = require('./bot');
 const { getSessionsCount, getActiveSessions, simulateCommand } = require('./handlers/messageHandler');
 const { getRecentReports, LAPORAN_FILE_PATH } = require('./ppoService');
+const logger = require('./logger');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// HTTP Request Logger for dashboard interactions and simulation API
+app.use((req, res, next) => {
+  if (req.path === '/api/status' || req.path.startsWith('/api/reports')) {
+    return next();
+  }
+  const t0 = Date.now();
+  res.on('finish', () => {
+    logger.debug('HTTP', `${req.method} ${req.originalUrl} ➔ Status ${res.statusCode} (${Date.now() - t0}ms)`);
+  });
+  next();
+});
 
 /**
  * Status API Endpoint
@@ -548,6 +561,6 @@ app.get(['/', '/dashboard'], (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Unified WhatsApp Bot Web Dashboard running on http://0.0.0.0:${PORT}`);
+  logger.info('SERVER', `Unified WhatsApp Bot Web Dashboard aktif di http://0.0.0.0:${PORT}`);
   startBot();
 });

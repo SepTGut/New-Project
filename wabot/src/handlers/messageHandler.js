@@ -23,6 +23,8 @@ const {
   parseDecodedCode
 } = require('../barcodeService');
 
+const logger = require('../logger');
+
 const {
   getDaftarGedung,
   ambilTitikLokasi,
@@ -111,6 +113,7 @@ function teksMenuGedung() {
  * Main message router
  */
 async function handleMessage(sock, msg) {
+  const startTime = Date.now();
   try {
     const from = msg.key.remoteJid;
     if (!from || from.endsWith('@g.us')) {
@@ -134,7 +137,24 @@ async function handleMessage(sock, msg) {
     text = String(text || '').trim();
     if (!text && !hasImage) return;
 
+    const senderPhone = formatPhone(from);
     const senderName = msg.pushName || 'Rekan Operasional';
+    const msgType = hasImage ? (text ? 'IMAGE+TEXT' : 'IMAGE') : 'TEXT';
+
+    // Log incoming message to terminal
+    logger.incoming(senderPhone, senderName, msgType, text);
+
+    // Transparently wrap sock.sendMessage to log all replies with latency
+    const origSend = sock.sendMessage;
+    const loggedSock = Object.create(sock);
+    loggedSock.sendMessage = async (target, content, options) => {
+      const res = await origSend.call(sock, target, content, options);
+      const preview = content.text || content.caption || (content.image ? '[Foto Terkirim]' : '[Media]');
+      logger.reply(formatPhone(target), preview, Date.now() - startTime);
+      return res;
+    };
+    sock = loggedSock;
+
     const cleanText = text.replace(/^[!/#]/, '').trim();
     const parts = cleanText.split(/\s+/);
     const cmd = parts[0].toLowerCase();
@@ -145,6 +165,11 @@ async function handleMessage(sock, msg) {
 
     // Active PPO report session
     const ppoSession = ppoSessions.get(from);
+
+    // Log command if explicit or recognized keyword
+    if (text.startsWith('!') || ['menu', 'cek', 'opname', 'tambah', 'lapor', 'batal', 'login', 'logout', 'status', 'panduan', 'faq', 'link', 'url', 'web'].includes(cmd)) {
+      logger.cmd(cmd, args, { role: session?.role });
+    }
 
     // =========================================================================
     // 0.1. Numeric Selection from Previous Search Results
@@ -211,6 +236,7 @@ async function handleMessage(sock, msg) {
       const configuredUrl = process.env.PUBLIC_WEB_URL;
       if (configuredUrl) {
         const fullUrl = configuredUrl.startsWith('http') ? configuredUrl : `https://${configuredUrl}`;
+        logger.tunnel(fullUrl, 'PERMANEN');
         await sock.sendMessage(from, {
           text: `🌐 *Link Akses Web Gudang (Permanen):*\n\n${fullUrl}\n\n📱 _Bisa dibuka dari HP/laptop manapun tanpa VPN._`
         }, { quoted: msg });
@@ -222,15 +248,19 @@ async function handleMessage(sock, msg) {
         const cfRes = await axios.get('http://cloudflared:2000/quicktunnel', { timeout: 4000 });
         const hostname = cfRes.data && cfRes.data.hostname;
         if (hostname) {
+          const liveUrl = `https://${hostname}`;
+          logger.tunnel(liveUrl, 'QUICKTUNNEL');
           await sock.sendMessage(from, {
-            text: `🌐 *Link Akses Web Gudang (Internet):*\n\nhttps://${hostname}\n\n📱 _Bisa dibuka dari HP/laptop manapun tanpa VPN._\n⚠️ _URL berubah setiap kali server di-restart._`
+            text: `🌐 *Link Akses Web Gudang (Internet):*\n\n${liveUrl}\n\n📱 _Bisa dibuka dari HP/laptop manapun tanpa VPN._\n⚠️ _URL berubah setiap kali server di-restart._`
           }, { quoted: msg });
         } else {
+          logger.warn('TUNNEL', 'Quicktunnel hostname belum siap di port 2000');
           await sock.sendMessage(from, {
             text: '⏳ *Tunnel sedang memuat...*\nCoba lagi dalam 30 detik setelah server baru menyala.'
           }, { quoted: msg });
         }
       } catch (e) {
+        logger.warn('TUNNEL', `Gagal menjangkau Cloudflare metrics API: ${e.message}`);
         await sock.sendMessage(from, {
           text: `⚠️ *Tunnel online belum terdeteksi.*\n\nJika menggunakan domain Cloudflare sendiri, tentukan \`PUBLIC_WEB_URL\` di file \`.env\`.\n\nAkses lokal LAN:\n• Web: http://localhost:3000\n• Bot: http://localhost:3001/dashboard`
         }, { quoted: msg });
@@ -277,9 +307,11 @@ async function handleMessage(sock, msg) {
 
         const buffer = await extractMediaBuffer(msg);
         if (buffer && buffer.length > 0) {
+          const tScan = Date.now();
           const scanResult = await scanMaterialCard(buffer);
 
           if (scanResult.success && scanResult.text) {
+            logger.scanner(scanResult.isOcr ? 'Tesseract-OCR' : `ZXing-${scanResult.format}`, 'SUCCESS', scanResult.text, Date.now() - tScan);
             const parsed = parseDecodedCode(scanResult.text);
 
             // Case A: User QR Login Badge (Printed from PrintUserQR)
@@ -325,6 +357,7 @@ async function handleMessage(sock, msg) {
             await executeStockSearch(sock, from, msg, targetCode, null, withImage);
             return;
           } else {
+            logger.scanner('CardScanner', 'FAILED', scanResult.error || 'Barcode/kartu tidak terdeteksi', Date.now() - tScan);
             // Neither barcode nor readable card text detected in the uploaded photo
             await sock.sendMessage(from, {
               text: `⚠️ *Barcode, QR Code, atau Teks Kartu Tidak Terdeteksi*\n\n💡 *Tips Pengambilan Foto:*
@@ -607,6 +640,7 @@ _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk\`, \`RE02.1\`
 
         const gedungTerpilih = daftarGedung[nomor - 1];
         const { tanggal, jam } = waktuSekarang();
+        logger.ppo('pilih_gedung', `Gedung "${gedungTerpilih}" dipilih`, senderPhone);
 
         ppoSessions.set(from, {
           ...ppoSession,
@@ -789,6 +823,7 @@ _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk\`, \`RE02.1\`
         // Clear active report session
         ppoSessions.delete(from);
         simpanSesiAktif(ppoSessions);
+        logger.ppo('selesai', `Laporan "${ppoSession.gedung}" (${ppoSession.subPekerjaan}) tersimpan`, ppoSession.nomorPengirim);
 
         const confirmMsg =
 `✅ *LAPORAN PROGRESS BERHASIL TERSIMPAN!*
@@ -944,6 +979,7 @@ Status: *Aktif & Berwenang mencatat Opname* ✅`;
 
       const opnameRes = await updateOpname(targetCode, targetQty, session.name);
       if (opnameRes.success) {
+        logger.opname(opnameRes.kodeMaterial || targetCode, opnameRes.namaBarang || targetCode, opnameRes.oldQty, opnameRes.newQty, session.name);
         const confirmText =
 `✅ *STOCK OPNAME BERHASIL DIPERBARUI!*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1122,7 +1158,9 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
   }
 
   await sock.sendMessage(from, { text: `🔍 Mencari material *"${cleanQ}"*...` }, { quoted: msg });
+  const tSearch = Date.now();
   const results = preloadedResults || await searchItems(cleanQ);
+  logger.search(cleanQ, results ? results.length : 0, Date.now() - tSearch, needImage ? 'dengan foto Drive' : '');
 
   if (!results || results.length === 0) {
     await sock.sendMessage(from, {
