@@ -47,6 +47,10 @@ const sessions = new Map();
 // Map of active in-progress PPO report sessions: senderJid -> { step, gedung, ... }
 const ppoSessions = muatSesiAktif();
 
+// Map of recent search results: senderJid -> { query, results, withImage, timestamp }
+// Stores the last multi-item search list per user for numeric selection (TTL: 5 min)
+const searchSessions = new Map();
+
 function getSessionsCount() {
   return sessions.size;
 }
@@ -141,6 +145,35 @@ async function handleMessage(sock, msg) {
 
     // Active PPO report session
     const ppoSession = ppoSessions.get(from);
+
+    // =========================================================================
+    // 0.1. Numeric Selection from Previous Search Results
+    // =========================================================================
+    // If the user sends a plain number (optionally followed by G/gambar/foto),
+    // and a recent search list is cached for this user, select that item directly.
+    if (!ppoSession) {
+      const numericMatch = text.trim().match(/^(\d+)(\s+[gG]|\s+(?:gambar|foto))?$/i);
+      if (numericMatch) {
+        const searchSession = searchSessions.get(from);
+        const SEARCH_TTL_MS = 5 * 60 * 1000; // 5 minutes
+        if (searchSession && (Date.now() - searchSession.timestamp) < SEARCH_TTL_MS) {
+          const idx = parseInt(numericMatch[1], 10) - 1; // 0-based index
+          const wantImage = !!(numericMatch[2] && numericMatch[2].trim());
+          if (idx >= 0 && idx < searchSession.results.length) {
+            const chosen = searchSession.results[idx];
+            searchSessions.delete(from); // consume the session after selection
+            await executeStockSearch(sock, from, msg, chosen.kodeMaterial, [chosen], wantImage || searchSession.withImage);
+            return;
+          } else {
+            await sock.sendMessage(from, {
+              text: `⚠️ Nomor *${numericMatch[1]}* tidak valid. Pilih antara *1* hingga *${searchSession.results.length}*.\n_Atau ketik kata kunci baru untuk mencari ulang._`
+            }, { quoted: msg });
+            return;
+          }
+        }
+      }
+    }
+
 
     // Extract quoted message text if user replies to a bot message
     const contextInfo = messageContent.extendedTextMessage && messageContent.extendedTextMessage.contextInfo;
@@ -1139,8 +1172,15 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
     return;
   }
 
-  // Case 2: Multiple items found
+  // Case 2: Multiple items found — cache results for numeric pick
   const displayCount = Math.min(results.length, 12);
+  // Store results so the user can pick by typing the list number (TTL: 5 min)
+  searchSessions.set(from, {
+    query: cleanQ,
+    results: results.slice(0, displayCount),
+    withImage: needImage,
+    timestamp: Date.now()
+  });
   let listText = `🔍 *Ditemukan ${results.length} Material untuk "${cleanQ}":*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 
   for (let i = 0; i < displayCount; i++) {
@@ -1152,7 +1192,7 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
     listText += `\n_...dan ${results.length - displayCount} item lainnya._\n`;
   }
 
-  listText += `━━━━━━━━━━━━━━━━━━━━━━━━━\n💡 _Ketik kode (contoh: \`${results[0].kodeMaterial}\`) untuk detail teks._\n🖼️ _Ketik *G ${results[0].kodeMaterial}* untuk langsung melihat foto._`;
+  listText += `━━━━━━━━━━━━━━━━━━━━━━━━━\n💡 _Ketik *nomor* (misal: *1*) untuk melihat detail item tersebut._\n🖼️ _Tambah *G* setelah nomor (misal: *1 G*) untuk langsung melihat foto._`;
   await sock.sendMessage(from, { text: listText }, { quoted: msg });
 }
 
