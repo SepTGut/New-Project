@@ -55,7 +55,8 @@ async function getGdriveCatalog() {
   try {
     const res = await fetch('/exported_source_inventory.json');
     if (res.ok) {
-      gdriveCatalog = await res.json();
+      const json = await res.json();
+      gdriveCatalog = Array.isArray(json) ? json : (json.items || []);
     }
   } catch (e) {
     // Ignore if not available
@@ -80,18 +81,43 @@ async function getGdriveCatalog() {
               try {
                 const catalog = await getGdriveCatalog();
                 if (catalog && catalog.length > 0) {
-                  const catMap = new Map();
+                  const catByNo = new Map();
+                  const catByCode = new Map();
+                  const catByName = new Map();
+
                   catalog.forEach((c) => {
-                    if (c.kodeMaterial) catMap.set(c.kodeMaterial.toLowerCase(), c);
-                    if (c.no) catMap.set(String(c.no), c);
+                    const link = c.link_foto || c.linkFoto || '';
+                    if (!link) return;
+                    const match = String(link).match(/(?:\/d\/|id=)([a-zA-Z0-9_-]+)/);
+                    const fileId = match ? match[1] : '';
+                    const imageUrl = fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : link;
+                    const entry = { linkFoto: link, fileId, imageUrl };
+
+                    if (c.no) catByNo.set(String(c.no), entry);
+                    const code = String(c.kode_material || c.kodeMaterial || '').trim().toLowerCase();
+                    if (code && code !== '-') {
+                      catByCode.set(code, entry);
+                      catByCode.set(code.replace(/[^a-z0-9]/g, ''), entry);
+                    }
+                    const name = String(c.nama_barang || c.namaBarang || '').trim().toLowerCase();
+                    if (name) {
+                      catByName.set(name, entry);
+                      catByName.set(name.replace(/[^a-z0-9]/g, ''), entry);
+                    }
                   });
+
                   data = data.map((it) => {
-                    const k = (it['Kode Material'] || it.kodeMaterial || '').toLowerCase();
-                    const n = String(it.No || it.no || '');
-                    const matched = catMap.get(k) || catMap.get(n);
-                    if (matched && matched.linkFoto) {
+                    const no = String(it.No || it.no || it['NO'] || '').trim();
+                    const code = String(it['Kode Material'] || it.kodeMaterial || it['kode'] || '').trim().toLowerCase();
+                    const name = String(it['Nama Barang'] || it.namaBarang || it['nama'] || '').trim().toLowerCase();
+
+                    const matched = (no && catByNo.get(no)) ||
+                                    (code && code !== '-' && (catByCode.get(code) || catByCode.get(code.replace(/[^a-z0-9]/g, '')))) ||
+                                    (name && (catByName.get(name) || catByName.get(name.replace(/[^a-z0-9]/g, ''))));
+
+                    if (matched) {
                       const currentLink = String(it['Link Foto'] || it.linkFoto || '').trim();
-                      if (!currentLink || currentLink.toLowerCase() === 'link') {
+                      if (!currentLink || currentLink.toLowerCase() === 'link' || currentLink === '-') {
                         return {
                           ...it,
                           'Link Foto': matched.linkFoto,
