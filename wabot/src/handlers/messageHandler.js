@@ -128,6 +128,16 @@ async function handleMessage(sock, msg) {
     // Active PPO report session
     const ppoSession = ppoSessions.get(from);
 
+    // Extract quoted message text if user replies to a bot message
+    const contextInfo = messageContent.extendedTextMessage && messageContent.extendedTextMessage.contextInfo;
+    const quotedMsg = contextInfo && contextInfo.quotedMessage;
+    let quotedText = '';
+    if (quotedMsg) {
+      quotedText = quotedMsg.conversation ||
+                   (quotedMsg.extendedTextMessage && quotedMsg.extendedTextMessage.text) ||
+                   (quotedMsg.imageMessage && quotedMsg.imageMessage.caption) || '';
+    }
+
     // =========================================================================
     // 0. Global Cancellation for In-Progress PPO Reports
     // =========================================================================
@@ -147,6 +157,33 @@ async function handleMessage(sock, msg) {
     }
 
     // =========================================================================
+    // 0.5. Dedicated Image Request Trigger: G / !g / !gambar / !foto
+    // (Only includes photo when user explicitly requests with 'G')
+    // =========================================================================
+    if (['g', 'gambar', 'foto'].includes(cmd) && !ppoSession) {
+      const rawArg = args.join(' ').trim();
+      if (rawArg) {
+        await executeStockSearch(sock, from, msg, rawArg, null, true);
+        return;
+      }
+
+      // If user replied 'G' to a material detail message
+      if (quotedText) {
+        const matchCode = quotedText.match(/Kode Material\s*:\s*[`*]?([A-Za-z0-9-_]+)[`*]?/i) ||
+                          quotedText.match(/`([A-Za-z0-9-_]+)`/);
+        if (matchCode && matchCode[1]) {
+          await executeStockSearch(sock, from, msg, matchCode[1], null, true);
+          return;
+        }
+      }
+
+      await sock.sendMessage(from, {
+        text: '📸 *Lihat Foto Material (G):*\nKetik `G <kode_material>` atau balas pesan barang dengan huruf `G`.\n_Contoh:_ `G ITEM-1`, `G wago`, atau `ITEM-1 G`'
+      }, { quoted: msg });
+      return;
+    }
+
+    // =========================================================================
     // 1. Help, Greetings & Unified Quick-Start Tutorial
     // =========================================================================
     if (['panduan', 'tutorial', 'cara'].includes(cmd) && !ppoSession) {
@@ -158,10 +195,10 @@ Selamat datang! Berikut panduan praktis menggunakan asisten bot:
 
 🔹 *1. CARA MENCARI BARANG GUDANG*
 Tidak perlu menghafal kode perintah rumit:
-1. Ketik langsung nama atau nomor item ke chat.
-   _Contoh:_ \`wago\`, \`san disk 64\`, \`ITEM-1\`, atau \`rak RE02\`
-2. Bot akan mengirimkan kartu detail lengkap beserta foto dari Google Drive.
-3. Atau gunakan \`!cek <nama>\` jika ingin pencarian spesifik.
+1. Ketik langsung nama atau kode item ke chat (misal: \`ITEM-1\` atau \`wago\`) untuk detail teks cepat tanpa foto.
+2. Tambahkan huruf *G* di awal atau akhir (misal: \`G ITEM-1\`, \`ITEM-1 G\`, atau \`!g ITEM-1\`) untuk menampilkan foto barang dari Google Drive.
+3. Atau balas *(reply)* pesan detail barang dengan huruf *G*.
+4. Atau gunakan \`!cek <nama>\` jika ingin pencarian spesifik.
 
 
 🔹 *2. CARA UPDATE STOK (STOCK OPNAME)*
@@ -282,8 +319,12 @@ _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk\`, \`RE02.1\`
 
 🏢 *STOCK OPNAME GUDANG*
 • \`!cek <kata_kunci>\`
-  ➔ Cek detail spesifikasi & stok barang
-  _Contoh:_ \`!cek MCB ABB\`
+  ➔ Cek detail spesifikasi & stok (Teks cepat)
+  _Contoh:_ \`!cek MCB ABB\`, \`wago\`, \`ITEM-1\`
+
+• \`G <kode>\` atau \`!g <kode>\`
+  ➔ Tampilkan kartu detail beserta FOTO Google Drive
+  _Contoh:_ \`G ITEM-1\`, \`ITEM-1 G\`, \`!g wago\`
 
 • \`!opname <kode> <jumlah>\`
   ➔ Update jumlah fisik stok gudang
@@ -689,8 +730,22 @@ Status: *Aktif & Berwenang mencatat Opname* ✅`;
     // 8. Stock Check: !cek / !stok / !cari
     // =========================================================================
     if (['cek', 'stok', 'cari', 'item', 'stock'].includes(cmd)) {
-      const query = args.join(' ').trim();
-      await executeStockSearch(sock, from, msg, query);
+      let query = args.join(' ').trim();
+      let withImg = false;
+      if (/^[gG]\s+/i.test(query)) {
+        withImg = true;
+        query = query.replace(/^[gG]\s+/i, '').trim();
+      } else if (/\s+[gG]$/i.test(query)) {
+        withImg = true;
+        query = query.replace(/\s+[gG]$/i, '').trim();
+      } else if (/^(gambar|foto)\s+/i.test(query)) {
+        withImg = true;
+        query = query.replace(/^(gambar|foto)\s+/i, '').trim();
+      } else if (/\s+(gambar|foto)$/i.test(query)) {
+        withImg = true;
+        query = query.replace(/\s+(gambar|foto)$/i, '').trim();
+      }
+      await executeStockSearch(sock, from, msg, query, null, withImg);
       return;
     }
 
@@ -820,12 +875,28 @@ _Data langsung aktif dan siap digunakan untuk opname._`;
     }
 
     // Direct search without prefix for material names, codes, or rack locations
-    const plainQuery = text.trim();
+    let plainQuery = text.trim();
+    let directImage = false;
+
+    if (/^[gG]\s+/i.test(plainQuery)) {
+      directImage = true;
+      plainQuery = plainQuery.replace(/^[gG]\s+/i, '').trim();
+    } else if (/\s+[gG]$/i.test(plainQuery)) {
+      directImage = true;
+      plainQuery = plainQuery.replace(/\s+[gG]$/i, '').trim();
+    } else if (/^(gambar|foto)\s+/i.test(plainQuery)) {
+      directImage = true;
+      plainQuery = plainQuery.replace(/^(gambar|foto)\s+/i, '').trim();
+    } else if (/\s+(gambar|foto)$/i.test(plainQuery)) {
+      directImage = true;
+      plainQuery = plainQuery.replace(/\s+(gambar|foto)$/i, '').trim();
+    }
+
     const commonWords = ['ok', 'siap', 'ya', 'y', 'tidak', 't', 'p', 'tes', 'test', 'halo', 'hai', 'hello', 'hi', 'makasih', 'terima kasih', 'thanks', 'thx'];
     if (plainQuery.length >= 2 && !commonWords.includes(plainQuery.toLowerCase())) {
       const matches = await searchItems(plainQuery);
       if (matches && matches.length > 0) {
-        await executeStockSearch(sock, from, msg, plainQuery, matches);
+        await executeStockSearch(sock, from, msg, plainQuery, matches, directImage);
         return;
       }
     }
@@ -837,12 +908,43 @@ _Data langsung aktif dan siap digunakan untuk opname._`;
 
 /**
  * Helper to perform stock search and reply to user with details or list
+ * @param {Object} sock
+ * @param {string} from
+ * @param {Object} msg
+ * @param {string} query
+ * @param {Array|null} preloadedResults
+ * @param {boolean} withImage - If true, fetches and sends image from Google Drive
  */
-async function executeStockSearch(sock, from, msg, query, preloadedResults = null) {
-  const cleanQ = String(query || '').trim();
+async function executeStockSearch(sock, from, msg, query, preloadedResults = null, withImage = false) {
+  let targetQuery = String(query || '').trim();
+  let needImage = Boolean(withImage);
+
+  // Auto-detect G / gambar / foto in query:
+  // Starts with "G " or "g " (e.g. "G ITEM-1", "g wago", "G 10")
+  if (/^[gG]\s+/i.test(targetQuery)) {
+    needImage = true;
+    targetQuery = targetQuery.replace(/^[gG]\s+/i, '').trim();
+  }
+  // Ends with " G" or " g" (e.g. "ITEM-1 G", "wago g")
+  else if (/\s+[gG]$/i.test(targetQuery)) {
+    needImage = true;
+    targetQuery = targetQuery.replace(/\s+[gG]$/i, '').trim();
+  }
+  // Starts with "gambar " or "foto "
+  else if (/^(gambar|foto)\s+/i.test(targetQuery)) {
+    needImage = true;
+    targetQuery = targetQuery.replace(/^(gambar|foto)\s+/i, '').trim();
+  }
+  // Ends with " gambar" or " foto"
+  else if (/\s+(gambar|foto)$/i.test(targetQuery)) {
+    needImage = true;
+    targetQuery = targetQuery.replace(/\s+(gambar|foto)$/i, '').trim();
+  }
+
+  const cleanQ = targetQuery;
   if (!cleanQ) {
     await sock.sendMessage(from, {
-      text: '⚠️ *Format:* Ketik kata kunci langsung atau gunakan `!cek <nama/kode>`\n_Contoh:_ `wago`, `ITEM-1`, `san disk 64`, `MCB ABB`'
+      text: '⚠️ *Format:* Ketik kata kunci langsung atau gunakan `!cek <nama/kode>`\n_Untuk foto:_ ketik `G <kode>` (contoh: `G ITEM-1`, `ITEM-1 G`)'
     }, { quoted: msg });
     return;
   }
@@ -870,7 +972,28 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
   // Case 1: Exactly 1 item found OR exact match
   if (results.length === 1 || exactMatch) {
     const item = exactMatch || results[0];
-    const caption =
+
+    // If user did NOT say G: send quick clean text without downloading image
+    if (!needImage) {
+      const textOnlyCaption =
+`📦 *DETAIL MATERIAL GUDANG*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🏷️ *Kode Material :* \`${item.kodeMaterial}\`
+📝 *Nama Barang   :* *${item.namaBarang}*
+📍 *Lokasi Rak    :* *${item.lokasiRak}*
+📊 *Jumlah Stok   :* *${item.qty} ${item.uom}*
+📄 *Spesifikasi   :* ${item.deskripsi || '-'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🖼️ _Ketik *G ${item.kodeMaterial}* untuk melihat foto barang_
+💡 _Untuk update stok fisik, balas:_
+\`!opname ${item.kodeMaterial} <jumlah_baru>\``;
+
+      await sock.sendMessage(from, { text: textOnlyCaption }, { quoted: msg });
+      return;
+    }
+
+    // If user said G: fetch image from GDrive and send with caption
+    const imageCaption =
 `📦 *DETAIL MATERIAL GUDANG*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🏷️ *Kode Material :* \`${item.kodeMaterial}\`
@@ -900,7 +1023,7 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
         if (imgData && imgData.buffer) {
           await sock.sendMessage(from, {
             image: imgData.buffer,
-            caption: caption,
+            caption: imageCaption,
             mimetype: imgData.mimeType || 'image/jpeg'
           }, { quoted: msg });
           imageSent = true;
@@ -911,7 +1034,9 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
     }
 
     if (!imageSent) {
-      await sock.sendMessage(from, { text: caption }, { quoted: msg });
+      await sock.sendMessage(from, {
+        text: `${imageCaption}\n\nℹ️ _Foto material ini belum tersedia di Google Drive._`
+      }, { quoted: msg });
     }
     return;
   }
@@ -929,7 +1054,7 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
     listText += `\n_...dan ${results.length - displayCount} item lainnya._\n`;
   }
 
-  listText += `━━━━━━━━━━━━━━━━━━━━━━━━━\n💡 _Ketik kode material langsung (contoh: \`${results[0].kodeMaterial}\`) untuk melihat detail & foto lengkap._`;
+  listText += `━━━━━━━━━━━━━━━━━━━━━━━━━\n💡 _Ketik kode (contoh: \`${results[0].kodeMaterial}\`) untuk detail teks._\n🖼️ _Ketik *G ${results[0].kodeMaterial}* untuk langsung melihat foto._`;
   await sock.sendMessage(from, { text: listText }, { quoted: msg });
 }
 

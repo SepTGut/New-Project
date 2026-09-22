@@ -252,7 +252,8 @@ app.get(['/', '/dashboard'], (req, res) => {
             <span class="chip" onclick="setCmd('!menu')">!menu</span>
             <span class="chip" onclick="setCmd('!lapor')">!lapor (PPO)</span>
             <span class="chip" onclick="setCmd('batal')">batal</span>
-            <span class="chip" onclick="setCmd('!cek ITEM-1')">!cek ITEM-1</span>
+            <span class="chip" onclick="setCmd('!cek ITEM-1')">!cek ITEM-1 (Teks)</span>
+            <span class="chip" onclick="setCmd('G ITEM-1')">G ITEM-1 (Foto)</span>
             <span class="chip" onclick="setCmd('!status')">!status</span>
             <span class="chip" onclick="setCmd('!login admin admin123')">!login admin</span>
             <span class="chip" onclick="setCmd('!faq lampu')">!faq lampu</span>
