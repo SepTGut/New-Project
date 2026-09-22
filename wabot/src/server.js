@@ -101,7 +101,16 @@ app.post('/api/simulate', async (req, res) => {
   try {
     const { phone = '6281200001111', message = '!menu' } = req.body;
     const replies = await simulateCommand(phone, message);
-    res.json({ success: true, replies });
+    const formattedReplies = replies.map(r => {
+      if (r && r.image && Buffer.isBuffer(r.image)) {
+        return {
+          ...r,
+          image: `data:${r.mimetype || 'image/jpeg'};base64,${r.image.toString('base64')}`
+        };
+      }
+      return r;
+    });
+    res.json({ success: true, replies: formattedReplies });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -422,12 +431,37 @@ app.get(['/', '/dashboard'], (req, res) => {
         });
         const data = await res.json();
         if (data.replies && data.replies.length > 0) {
-          let fullText = '';
+          out.innerHTML = '';
           data.replies.forEach(r => {
-            if (r.text) fullText += r.text + '\\n\\n';
-            if (r.caption) fullText += '[Foto Bukti]\\n' + r.caption + '\\n\\n';
+            if (r.text) {
+              const p = document.createElement('div');
+              p.style.whiteSpace = 'pre-wrap';
+              p.style.marginBottom = '12px';
+              p.textContent = r.text;
+              out.appendChild(p);
+            }
+            if (r.image) {
+              const imgWrap = document.createElement('div');
+              imgWrap.style.margin = '10px 0';
+              const img = document.createElement('img');
+              img.src = r.image;
+              img.alt = 'Foto Google Drive';
+              img.style.maxWidth = '100%';
+              img.style.maxHeight = '240px';
+              img.style.borderRadius = '8px';
+              img.style.border = '1px solid #334155';
+              img.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+              imgWrap.appendChild(img);
+              out.appendChild(imgWrap);
+            }
+            if (r.caption) {
+              const cap = document.createElement('div');
+              cap.style.whiteSpace = 'pre-wrap';
+              cap.style.marginBottom = '12px';
+              cap.textContent = r.caption;
+              out.appendChild(cap);
+            }
           });
-          out.textContent = fullText.trim();
         } else {
           out.textContent = '(Tidak ada balasan)';
         }

@@ -179,6 +179,9 @@ const uom = computed(() => getVal(['uom', 'satuan']) || '');
 const deskripsi = computed(() => getVal(['deskripsi', 'keterangan']));
 
 const mainPhotoUrl = computed(() => {
+  if (props.item.imageUrl) return props.item.imageUrl;
+  if (props.item.fileId) return `https://lh3.googleusercontent.com/d/${props.item.fileId}`;
+
   // 1. Prioritize Foto 1 (the main photo of the whole item)
   const f1Val = getVal(['link foto', 'link foto 1', 'foto 1', 'foto1', 'foto', 'link1', 'link']);
   if (f1Val) {

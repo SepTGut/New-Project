@@ -13,7 +13,8 @@ const {
   verifyLogin,
   updateOpname,
   addMaterial,
-  fetchImageBuffer
+  fetchImageBuffer,
+  resolveDrivePhoto
 } = require('../dataService');
 
 const {
@@ -882,18 +883,31 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
 \`!opname ${item.kodeMaterial} <jumlah_baru>\``;
 
     let imageSent = false;
-    if (item.fileId || item.linkFoto) {
+    let targetFileId = item.fileId;
+    let targetLink = item.imageUrl || item.linkFoto;
+
+    if (!targetFileId) {
+      const resolved = resolveDrivePhoto(item.no, item.kodeMaterial, item.namaBarang);
+      if (resolved) {
+        targetFileId = resolved.fileId;
+        targetLink = resolved.url;
+      }
+    }
+
+    if (targetFileId || targetLink) {
       try {
-        const imgData = await fetchImageBuffer(item.fileId || item.linkFoto);
+        const imgData = await fetchImageBuffer(targetFileId || targetLink);
         if (imgData && imgData.buffer) {
           await sock.sendMessage(from, {
             image: imgData.buffer,
             caption: caption,
-            mimetype: imgData.mimeType
+            mimetype: imgData.mimeType || 'image/jpeg'
           }, { quoted: msg });
           imageSent = true;
         }
-      } catch (imgErr) {}
+      } catch (imgErr) {
+        console.warn(`[StockSearch] Gagal mengunduh foto Drive untuk ${item.kodeMaterial}:`, imgErr.message);
+      }
     }
 
     if (!imageSent) {

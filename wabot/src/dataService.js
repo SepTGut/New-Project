@@ -4,6 +4,8 @@
  * Configured with IPv4 priority to ensure reliable connectivity inside containers/WSL2.
  */
 
+const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
@@ -38,6 +40,113 @@ const LOCAL_ACCOUNTS = [
   { username: 'user1', pass: 'user123', name: 'Warehouse Operator', role: 'User' },
   { username: 'staff', pass: 'staff123', name: 'Warehouse Staff', role: 'User' }
 ];
+
+// In-memory cache for downloaded image buffers to ensure lightning-fast WhatsApp replies
+const imageBufferCache = new Map();
+const IMG_CACHE_TTL = 3600000; // 1 hour
+
+// Google Drive photo reference maps
+const photoCatalogByNo = new Map();
+const photoCatalogByCode = new Map();
+const photoCatalogByName = new Map();
+
+/**
+ * Initializes Google Drive photo reference catalog from exported JSON
+ */
+function initDrivePhotoCatalog() {
+  const candidates = [
+    path.join(__dirname, '../../data/exported_source_inventory.json'),
+    path.join(__dirname, '../data/exported_source_inventory.json'),
+    path.join(__dirname, '../../data/ppo/exported_source_inventory.json'),
+    path.join(process.env.DATA_DIR || '', 'exported_source_inventory.json'),
+    path.join(process.cwd(), 'data/exported_source_inventory.json'),
+    path.join(process.cwd(), '../data/exported_source_inventory.json'),
+    '/app/data/exported_source_inventory.json'
+  ];
+
+  let catalogPath = null;
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) {
+      catalogPath = c;
+      break;
+    }
+  }
+
+  if (!catalogPath) {
+    return;
+  }
+
+  try {
+    const raw = fs.readFileSync(catalogPath, 'utf8');
+    const json = JSON.parse(raw);
+    const items = json.items || [];
+    for (const it of items) {
+      const url = it.link_foto || '';
+      if (!url) continue;
+
+      if (it.no) {
+        photoCatalogByNo.set(String(it.no), url);
+      }
+      const kode = String(it.kode_material || '').trim().toLowerCase();
+      if (kode && kode !== '-') {
+        photoCatalogByCode.set(kode, url);
+        photoCatalogByCode.set(kode.replace(/[^a-z0-9]/g, ''), url);
+      }
+      const nama = String(it.nama_barang || '').trim().toLowerCase();
+      if (nama) {
+        photoCatalogByName.set(nama, url);
+        photoCatalogByName.set(nama.replace(/[^a-z0-9]/g, ''), url);
+      }
+    }
+  } catch (err) {
+    console.error('[dataService] Error loading Google Drive photo catalog:', err.message);
+  }
+}
+
+initDrivePhotoCatalog();
+
+/**
+ * Resolves Google Drive photo URL and File ID from catalog
+ */
+function resolveDrivePhoto(no, kode, nama) {
+  if (photoCatalogByNo.size === 0) initDrivePhotoCatalog();
+
+  // 1. Match by No
+  if (no && photoCatalogByNo.has(String(no))) {
+    const url = photoCatalogByNo.get(String(no));
+    return { url, fileId: extractDriveFileId(url) };
+  }
+
+  // 2. Match by Code
+  const cleanCode = String(kode || '').trim().toLowerCase();
+  if (cleanCode && cleanCode !== '-') {
+    if (photoCatalogByCode.has(cleanCode)) {
+      const url = photoCatalogByCode.get(cleanCode);
+      return { url, fileId: extractDriveFileId(url) };
+    }
+    const stripped = cleanCode.replace(/[^a-z0-9]/g, '');
+    if (photoCatalogByCode.has(stripped)) {
+      const url = photoCatalogByCode.get(stripped);
+      return { url, fileId: extractDriveFileId(url) };
+    }
+  }
+
+  // 3. Match by Name
+  const cleanName = String(nama || '').trim().toLowerCase();
+  if (cleanName) {
+    if (photoCatalogByName.has(cleanName)) {
+      const url = photoCatalogByName.get(cleanName);
+      return { url, fileId: extractDriveFileId(url) };
+    }
+    const strippedName = cleanName.replace(/[^a-z0-9]/g, '');
+    if (photoCatalogByName.has(strippedName)) {
+      const url = photoCatalogByName.get(strippedName);
+      return { url, fileId: extractDriveFileId(url) };
+    }
+  }
+
+  return null;
+}
 
 /**
  * Extracts Google Drive file ID from any URL format
@@ -110,12 +219,21 @@ function parseCsv(csvText) {
     const qty = parseInt(item['qty'] || item['jumlah'] || '0', 10) || 0;
     const uom = String(item['uom'] || item['satuan'] || 'PCS').trim();
     const deskripsi = String(item['deskripsi'] || item['keterangan'] || '-').trim();
-    const linkFoto = String(item['link foto'] || item['foto'] || '').trim();
-    const fileId = extractDriveFileId(linkFoto);
+    let linkFoto = String(item['link foto'] || item['foto'] || '').trim();
+    let fileId = extractDriveFileId(linkFoto);
     const no = parseInt(item['no'] || String(items.length + 1), 10) || (items.length + 1);
 
     if (!kode || kode === '-') {
       kode = `ITEM-${no}`;
+    }
+
+    // Resolve Google Drive Photo Link if linkFoto is literal 'Link' or empty
+    if (!fileId || linkFoto.toLowerCase() === 'link') {
+      const resolved = resolveDrivePhoto(no, kode, nama);
+      if (resolved) {
+        linkFoto = resolved.url;
+        fileId = resolved.fileId;
+      }
     }
 
     if (kode || nama) {
@@ -387,11 +505,19 @@ async function addMaterial(data, username) {
 }
 
 /**
- * Downloads image buffer from Google Drive or direct URL
+ * Downloads image buffer from Google Drive or direct URL with caching
  */
 async function fetchImageBuffer(urlOrFileId) {
   if (!urlOrFileId) return null;
   const fileId = extractDriveFileId(urlOrFileId);
+
+  // Check in-memory buffer cache
+  if (fileId && imageBufferCache.has(fileId)) {
+    const cached = imageBufferCache.get(fileId);
+    if (Date.now() - cached.timestamp < IMG_CACHE_TTL) {
+      return { buffer: cached.buffer, mimeType: cached.mimeType };
+    }
+  }
 
   const urlsToTry = [];
   if (fileId) {
@@ -406,7 +532,7 @@ async function fetchImageBuffer(urlOrFileId) {
     try {
       const res = await httpClient.get(url, {
         responseType: 'arraybuffer',
-        timeout: 10000,
+        timeout: 12000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
@@ -414,10 +540,14 @@ async function fetchImageBuffer(urlOrFileId) {
       if (res.status === 200 && res.data && res.data.length > 200) {
         const contentType = res.headers['content-type'] || 'image/jpeg';
         if (contentType.includes('image') || contentType.includes('octet-stream')) {
-          return {
+          const result = {
             buffer: Buffer.from(res.data),
             mimeType: 'image/jpeg'
           };
+          if (fileId) {
+            imageBufferCache.set(fileId, { ...result, timestamp: Date.now() });
+          }
+          return result;
         }
       }
     } catch (e) {}
@@ -432,5 +562,6 @@ module.exports = {
   updateOpname,
   addMaterial,
   fetchImageBuffer,
-  extractDriveFileId
+  extractDriveFileId,
+  resolveDrivePhoto
 };

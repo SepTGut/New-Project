@@ -49,6 +49,20 @@ export async function fetchInventory() {
     console.warn('Apps Script live sync unavailable, falling back to published CSV:', gasErr);
   }
 
+let gdriveCatalog = null;
+async function getGdriveCatalog() {
+  if (gdriveCatalog) return gdriveCatalog;
+  try {
+    const res = await fetch('/exported_source_inventory.json');
+    if (res.ok) {
+      gdriveCatalog = await res.json();
+    }
+  } catch (e) {
+    // Ignore if not available
+  }
+  return gdriveCatalog || [];
+}
+
   // Strategy 2: Published Google Sheets CSV fallback
   try {
     const csvUrl = `${DATABASE_URL}&${cacheBuster}`;
@@ -60,11 +74,40 @@ export async function fetchInventory() {
         Papa.parse(cleanCsv, {
           header: true,
           skipEmptyLines: true,
-          complete: (results) => {
-            if (results.data && results.data.length > 0) {
-              localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(results.data));
+          complete: async (results) => {
+            let data = results.data || [];
+            if (data.length > 0) {
+              try {
+                const catalog = await getGdriveCatalog();
+                if (catalog && catalog.length > 0) {
+                  const catMap = new Map();
+                  catalog.forEach((c) => {
+                    if (c.kodeMaterial) catMap.set(c.kodeMaterial.toLowerCase(), c);
+                    if (c.no) catMap.set(String(c.no), c);
+                  });
+                  data = data.map((it) => {
+                    const k = (it['Kode Material'] || it.kodeMaterial || '').toLowerCase();
+                    const n = String(it.No || it.no || '');
+                    const matched = catMap.get(k) || catMap.get(n);
+                    if (matched && matched.linkFoto) {
+                      const currentLink = String(it['Link Foto'] || it.linkFoto || '').trim();
+                      if (!currentLink || currentLink.toLowerCase() === 'link') {
+                        return {
+                          ...it,
+                          'Link Foto': matched.linkFoto,
+                          linkFoto: matched.linkFoto,
+                          fileId: matched.fileId,
+                          imageUrl: matched.imageUrl
+                        };
+                      }
+                    }
+                    return it;
+                  });
+                }
+              } catch (e) {}
+              localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(data));
             }
-            resolve(results.data);
+            resolve(data);
           },
           error: () => resolve(getCachedInventory())
         });
