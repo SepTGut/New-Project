@@ -34,6 +34,8 @@ dist-ssr/
 build/
 *.log
 *.zip
+smart-warehouse-bundle-withauth/
+*bundle-withauth*
 
 # Testing, Scratch & Tool Artifacts
 .playwright-mcp/

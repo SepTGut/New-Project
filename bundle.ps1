@@ -47,6 +47,8 @@ $ExcludePatterns = @(
     'test-results',
     'scratch',
     'ServerWAbotPPO',
+    'smart-warehouse-bundle-withauth',
+    '*bundle-withauth*',
     '.env.example',      # We include actual .env files (they have real config)
     'GAS'                # GAS is deployed to Google, not needed at runtime
 )
