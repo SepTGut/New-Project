@@ -29,3 +29,14 @@ services:
     volumes:
       - ./wabot/auth_info_baileys:/app/auth_info_baileys
       - ./data/ppo:/app/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare_tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - stock-opname-web
+      - stock-opname-wabot
+    env_file:
+      - ./.env
