@@ -148,50 +148,175 @@ async function handleMessage(sock, msg) {
     // =========================================================================
     // 1. Help, Greetings & Unified Quick-Start Tutorial
     // =========================================================================
-    if (['menu', 'help', 'bantuan', 'panduan', 'tutorial', 'readme', 'start', 'mulai', 'halo', 'hai', 'hey', 'helo', 'hello', 'hi', 'p', 'info', 'petunjuk'].includes(cmd) && !ppoSession) {
-      const userStatus = session ? `🟢 Login sebagai *${session.name}* (${session.role})` : `⚪ Status: *Tamu (Belum Login)*`;
-      const tutorialText =
-`🤖 *PANDUAN & MENU BOT OPERASIONAL GUDANG & PPO*
-━━━━━━━━━━━━━━━━━━━━━━━━━
-Halo *${senderName}*! Selamat datang di asisten otomatis gudang & lapangan.
-${userStatus}
+    if (['panduan', 'tutorial', 'cara'].includes(cmd) && !ppoSession) {
+      const panduanText =
+`📖 *PANDUAN LENGKAP PENGGUNAAN BOT*
+━━━━━━━━━━━━━━━━━━━━
 
-Bot ini melayani 2 sistem utama secara terintegrasi:
+Selamat datang! Berikut panduan praktis menggunakan asisten bot:
 
-📦 *1. PENCARIAN & STOCK OPNAME GUDANG:*
-• *Cari Barang Langsung:*
-  Cukup ketik nama, kode material, atau lokasi rak.
-  _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk 64\`, atau \`RE02.1\`
-• *Perintah Cek Detail:*
+🔹 *1. CARA MENCARI BARANG GUDANG*
+Tidak perlu menghafal kode perintah rumit:
+1. Ketik langsung nama atau nomor item ke chat.
+   _Contoh:_ \`wago\`, \`san disk 64\`, \`ITEM-1\`, atau \`rak RE02\`
+2. Bot akan mengirimkan kartu detail lengkap beserta foto dari Google Drive.
+3. Atau gunakan \`!cek <nama>\` jika ingin pencarian spesifik.
+
+
+🔹 *2. CARA UPDATE STOK (STOCK OPNAME)*
+Hanya petugas terdaftar yang dapat mengubah stok master:
+1. Masuk ke akun Anda:
+   \`!login user1 user123\`  (atau \`admin admin123\`)
+2. Cari barang yang ingin dihitung:
+   \`!cek ITEM-1\`
+3. Masukkan jumlah stok fisik hasil hitungan:
+   \`!opname ITEM-1 45\`
+4. Stok di Google Spreadsheet otomatis terupdate secara instan!
+
+
+🔹 *3. CARA LAPOR PROGRESS PEKERJAAN (PPO)*
+Formulir interaktif terpandu 7 langkah:
+1. Ketik: \`!lapor\`
+2. Bot menampilkan daftar gedung: balas dengan nomor pilihan (misal: \`1\`).
+3. Pilih sub pekerjaan: ketik \`1\` (Mekanikal) atau \`2\` (Elektrikal).
+4. Pilih nomor titik lokasi kerja dari daftar.
+5. Tulis uraian progres pekerjaan yang sudah dikerjakan.
+6. Pilih status: \`1\` (Open/Sedang Berjalan) atau \`2\` (Close/Selesai).
+7. Tulis kendala di lapangan (atau ketik \`-\` jika lancar).
+8. Kirim 1 foto dokumentasi pekerjaan (atau ketik \`-\` jika tanpa foto).
+9. Laporan otomatis tersimpan rapi ke file Excel & sinkron ke cloud!
+
+
+🔹 *4. TANYA JAWAB & STATUS MATERIAL (FAQ)*
+Butuh info SOP atau status pengadaan material?
+• Ketik: \`!faq <topik>\`
+  _Contoh 1:_ \`!faq lapor\` ➔ SOP pelaporan & foto
+  _Contoh 2:_ \`!faq 4 way dos\` ➔ Cek PO & status kedatangan material
+
+
+🔹 *5. TIPS PENTING*
+• Ketik \`batal\` kapan saja jika ingin membatalkan pengisian laporan.
+• Ketik \`!status\` untuk memeriksa profil & hak akses akun Anda.
+• Ketik \`!menu\` untuk melihat ringkasan perintah cepat.
+━━━━━━━━━━━━━━━━━━━━`;
+
+      await sock.sendMessage(from, { text: panduanText }, { quoted: msg });
+      return;
+    }
+
+    if (['menu', 'help', 'bantuan', 'readme', 'start', 'mulai', 'halo', 'hai', 'hey', 'helo', 'hello', 'hi', 'p', 'info', 'petunjuk'].includes(cmd) && !ppoSession) {
+      const subMenu = args[0] ? args[0].toLowerCase() : '';
+
+      // Sub-menu Gudang
+      if (subMenu === 'gudang' || subMenu === 'stock' || subMenu === 'opname') {
+        const menuGudangText =
+`📦 *MODUL GUDANG & STOCK OPNAME*
+━━━━━━━━━━━━━━━━━━━━
+
+• *Cari Cepat:*
+  Ketik langsung: nama barang / kode / rak
+  _Contoh:_ \`wago\`, \`ITEM-1\`, \`RE02.1\`
+
+• *Detail Barang:*
   \`!cek <kata_kunci>\`
   _Contoh:_ \`!cek kabel NYM\`
-• *Update Stok Fisik (Opname):*
+
+• *Update Stok Fisik:*
   \`!opname <kode_material> <jumlah_baru>\`
-  _Contoh:_ \`!opname ITEM-1 50\` *(Perlu login petugas)*
-• *Tambah Material Baru (Admin):*
+  _Contoh:_ \`!opname ITEM-1 50\` *(Perlu login)*
+
+• *Tambah Barang Baru (Admin):*
   \`!tambah <rak> | <kode> | <nama> | <qty> | <uom> | <deskripsi>\`
 
-📋 *2. LAPORAN PROGRESS PEKERJAAN (PPO):*
-• *Mulai Pengisian Laporan:*
-  Ketik \`!lapor\` atau \`lapor\`
-  _Bot akan memandu langkah demi langkah: pilih nomor gedung, tentukan lantai/lokasi, uraian pekerjaan, progress (%), dan lampirkan foto dokumentasi._
-• *Batalkan Laporan:*
-  Ketik \`batal\` kapan saja jika ingin mengulang.
-• *Tanya Jawab SOP & Kendala:*
-  \`!faq <topik>\`
-  _Contoh:_ \`!faq lampu\`, \`!faq pipa\`
+• *Akun Petugas:*
+  \`!login <user> <pass>\`  |  \`!status\`  |  \`!logout\`
 
-🔐 *3. AKUN & KEAMANAN:*
-• \`!login <username> <password>\` : Masuk akun
-  _Contoh:_ \`!login admin admin123\` atau \`!login user1 user123\`
-• \`!status\` : Cek status & profil aktif Anda
-• \`!logout\` : Keluar sesi petugas
+━━━━━━━━━━━━━━━━━━━━
+💡 _Ketik \`!menu\` untuk melihat semua modul._`;
+        await sock.sendMessage(from, { text: menuGudangText }, { quoted: msg });
+        return;
+      }
 
-━━━━━━━━━━━━━━━━━━━━━━━━━
-💡 *TIPS CEPAT:*
-Ketik kata kunci barang apa saja untuk langsung mencari material, atau ketik \`!lapor\` untuk memulai pelaporan progress!`;
+      // Sub-menu PPO
+      if (subMenu === 'ppo' || subMenu === 'lapor' || subMenu === 'progres' || subMenu === 'progress') {
+        const menuPpoText =
+`📋 *MODUL PROGRESS PEKERJAAN (PPO)*
+━━━━━━━━━━━━━━━━━━━━
 
-      await sock.sendMessage(from, { text: tutorialText }, { quoted: msg });
+• *Isi Laporan Baru:*
+  \`!lapor\`
+  _Memulai formulir terpandu (Gedung ➔ Sub Pekerjaan ➔ Titik Lokasi ➔ Progres ➔ Foto)._
+
+• *Batalkan Pengisian:*
+  \`batal\`
+  _Bisa diketik kapan saja saat mengisi laporan._
+
+• *Cek SOP & Status Material:*
+  \`!faq <kata_kunci>\`
+  _Contoh:_ \`!faq pipa\`, \`!faq lampu\`, \`!faq 4 way dos\`
+
+━━━━━━━━━━━━━━━━━━━━
+💡 _Ketik \`!menu\` untuk melihat semua modul._`;
+        await sock.sendMessage(from, { text: menuPpoText }, { quoted: msg });
+        return;
+      }
+
+      // Main Clean Overview Menu
+      const userStatus = session ? `🟢 Petugas: *${session.name}* (${session.role})` : `⚪ Status: *Tamu (Belum Login)*`;
+      const cleanMenuText =
+`🤖 *MENU OPERASIONAL BOT*
+Gudang & Pelaporan Lapangan (PPO)
+
+Halo *${senderName}*!
+${userStatus}
+
+━━━━━━━━━━━━━━━━━━━━
+
+📦 *PENCARIAN CEPAT (TANPA PERINTAH)*
+Cari barang langsung tanpa tanda seru:
+➔ Cukup ketik: nama barang / kode / rak
+_Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk\`, \`RE02.1\`
+
+━━━━━━━━━━━━━━━━━━━━
+
+🏢 *STOCK OPNAME GUDANG*
+• \`!cek <kata_kunci>\`
+  ➔ Cek detail spesifikasi & stok barang
+  _Contoh:_ \`!cek MCB ABB\`
+
+• \`!opname <kode> <jumlah>\`
+  ➔ Update jumlah fisik stok gudang
+  _Contoh:_ \`!opname ITEM-1 50\` *(Perlu Login)*
+
+• \`!tambah <rak> | <kode> | <nama> | <qty> | <uom> | <ket>\`
+  ➔ Daftarkan material baru *(Khusus Admin)*
+
+━━━━━━━━━━━━━━━━━━━━
+
+📋 *PROGRESS PEKERJAAN (PPO)*
+• \`!lapor\`
+  ➔ Mulai formulir laporan terpandu 7 langkah
+  _(Gedung ➔ Sub Pekerjaan ➔ Titik Lokasi ➔ Progres ➔ Foto)_
+
+• \`batal\`
+  ➔ Batalkan pengisian laporan kapan saja
+
+• \`!faq <topik>\`
+  ➔ Cek SOP kerja & status pengadaan material
+  _Contoh:_ \`!faq pipa\`, \`!faq lampu\`, \`!faq 4 way dos\`
+
+━━━━━━━━━━━━━━━━━━━━
+
+🔐 *AKUN PETUGAS*
+• \`!login <user> <pass>\` ➔ Masuk akun petugas
+• \`!status\` ➔ Periksa profil & hak akses aktif
+• \`!logout\` ➔ Keluar sesi
+
+━━━━━━━━━━━━━━━━━━━━
+💡 _Ketik *!panduan* untuk tutorial lengkap langkah demi langkah._
+💡 _Ketik *!menu gudang* atau *!menu ppo* untuk tampilan khusus._`;
+
+      await sock.sendMessage(from, { text: cleanMenuText }, { quoted: msg });
       return;
     }
 

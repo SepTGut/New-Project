@@ -51,7 +51,6 @@ async function startBot() {
     const sock = makeWASocket({
       version,
       auth: state,
-      printQRInTerminal: true, // Also prints in console/podman logs
       logger: pino({ level: 'silent' }),
       browser: ['Smart Warehouse WABot', 'Chrome', '120.0.0']
     });
@@ -82,19 +81,23 @@ async function startBot() {
 
       if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
         botState.status = 'disconnected';
         botState.qrRaw = '';
         botState.qrDataUrl = '';
         botState.connectedUser = null;
         botState.lastDisconnectReason = lastDisconnect?.error?.message || `Status code: ${statusCode}`;
 
-        console.log(`Connection closed: ${botState.lastDisconnectReason}. Reconnecting: ${shouldReconnect}`);
+        console.log(`Connection closed: ${botState.lastDisconnectReason} (Status code: ${statusCode})`);
 
-        if (shouldReconnect) {
-          setTimeout(startBot, 4000);
+        if (isLoggedOut) {
+          console.log('⚠️ Sesi WhatsApp kedaluwarsa/logout. Membersihkan sesi dan membuat QR baru...');
+          clearAuthFolder();
+          // Restart to generate fresh pairing QR code
+          setTimeout(startBot, 2000);
         } else {
-          console.log('User logged out from WhatsApp. Clear auth directory to re-pair.');
+          // Temporary network hiccup, auto-reconnect
+          setTimeout(startBot, 4000);
         }
       } else if (connection === 'open') {
         botState.status = 'connected';
@@ -125,6 +128,28 @@ async function startBot() {
 }
 
 /**
+ * Deletes all files inside the auth folder WITHOUT removing the folder itself.
+ * Needed because Docker volume mounts lock the directory mountpoint (EBUSY).
+ */
+function clearAuthFolder() {
+  try {
+    if (!fs.existsSync(AUTH_FOLDER)) return;
+    const entries = fs.readdirSync(AUTH_FOLDER);
+    for (const entry of entries) {
+      const fullPath = path.join(AUTH_FOLDER, entry);
+      try {
+        fs.rmSync(fullPath, { recursive: true, force: true });
+      } catch (e) {
+        console.warn('Could not remove auth file:', fullPath, e.message);
+      }
+    }
+    console.log(`✅ Auth folder cleared (${entries.length} files removed).`);
+  } catch (err) {
+    console.error('Error clearing auth folder contents:', err.message);
+  }
+}
+
+/**
  * Resets local auth session files to allow re-pairing
  */
 async function resetAuthSession() {
@@ -134,11 +159,9 @@ async function resetAuthSession() {
         await botState.sock.logout();
       } catch (e) {}
     }
-    if (fs.existsSync(AUTH_FOLDER)) {
-      fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-    }
+    clearAuthFolder();
     setTimeout(startBot, 1000);
-    return { success: true, message: 'Auth session reset successfully' };
+    return { success: true, message: 'Auth session reset successfully. Scan QR to re-pair.' };
   } catch (err) {
     return { success: false, error: err.message };
   }

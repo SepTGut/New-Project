@@ -116,7 +116,7 @@
             v-for="(item, idx) in filteredItems"
             :key="idx"
             :item="item"
-            :is-admin="currentUser.role === 'admin'"
+            :is-admin="currentUser.role === 'admin' || currentUser.role === 'staff'"
             @item-updated="loadData"
           />
         </div>
@@ -150,7 +150,6 @@ import AddItemForm from './components/AddItemForm.vue';
 import BarcodeScannerModal from './components/BarcodeScannerModal.vue';
 import { getCurrentUser, logout } from './services/auth';
 import { fetchInventory } from './services/api';
-import { normalizeText } from './utils/imageUtils';
 import { exportInventoryToCSV } from './utils/exportUtils';
 
 const currentUser = ref(getCurrentUser());

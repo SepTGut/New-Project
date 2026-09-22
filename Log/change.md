@@ -561,3 +561,36 @@ Upgraded search intelligence across the entire ecosystem (WhatsApp Bot, Vue 3 We
    - Updated `action=search` endpoint to use multi-token scanning across all 8 columns (`No`, `Lokasi Rak`, `Kode Material`, `Nama Barang`, `Qty`, `UoM`, `Deskripsi`, `Link Foto`).
    - Pushed via clasp and deployed as **Version 28** (`AKfycbwYQSEzqmij2rD00ITG_39csE3vARolrFFMRm2Xt11fkqYx85RBkvlNszhfEkaxaMvb`).
 
+---
+
+## [v4.3: Review, UI/UX Menu Polish, Excel Schema Repair & Multi-Machine Hardening] - 2026-09-22
+### Summary
+Completed comprehensive review and audit across the entire ecosystem. Redesigned the WhatsApp bot menu and quick-start tutorials with clean spacing and legibility. Resolved a 1-column shift in the PPO Excel report structure, upgraded the FAQ engine to a dual-engine system (operational SOP + 727 electrical material procurement items), fixed `/dashboard` routing in Express, removed UTF-8 BOM from `start.sh`, and updated the deployment bundle script.
+
+### Key Changes
+1. **WhatsApp Bot Menu & Quick-Start Tutorial Redesign (`messageHandler.js`)**:
+   - **Spacious & Uncluttered Layout**: Completely eliminated crowded, wall-of-text formatting in favor of card-style whitespace, clean section dividers (`━━━━━━━━━━━━━━━━━━━━`), and action arrows (`➔`).
+   - **Dedicated `!panduan` / `!tutorial`**: Added a comprehensive step-by-step walkthrough for first-time users covering item search, stock opname, 7-step PPO reporting, and troubleshooting.
+   - **Modular Sub-Menus**: Added `!menu gudang` and `!menu ppo` for focused single-system operations.
+   - **Visual Action Arrows**: Standardized syntax display so users can scan commands and examples effortlessly on mobile screens.
+
+2. **PPO Excel Schema Repair & Alignment (`ppoService.js`, `laporan-progress.xlsx`)**:
+   - **13-Column Schema Alignment**: Standardized `KOLOM_LAPORAN` across code and Excel: `['Waktu Input', 'Nomor Pengirim', 'Nama Pengirim', 'Gedung', 'Tanggal Pengerjaan', 'Jam Selesai', 'Sub Pekerjaan', 'Titik Lokasi', 'Progres', 'Status', 'Kendala', 'Nama File Foto', 'Foto']`.
+   - **Eliminated Column Shift**: Repaired historic rows and updated row 1 headers in `data/ppo/laporan-progress.xlsx`, ensuring report data maps 1:1 with headers without shifting.
+   - **Optimized Workbook Footprint**: Stripped corrupt/bloated temp objects from `laporan-progress.xlsx`, reducing file size from 4.8 MB to ~10 KB.
+
+3. **Dual-Engine FAQ Search (`ppoService.js`)**:
+   - **Engine 1 (Operational SOP)**: Built-in knowledge base answering frequent field questions (`!faq lapor`, `!faq foto`, `!faq kendala`, `!faq opname`, `!faq pembatalan`).
+   - **Engine 2 (Procurement & Material Tracker)**: Multi-token search across the 727-row electrical procurement table in `data/ppo/faq.xlsx` (matching Description, SpecTech, Code, and Building to return PO status, arrival status, ETA, and BOM qty).
+
+4. **Express Routing & Docker Environment Hardening (`server.js`, `docker-compose.yml`)**:
+   - Added `/dashboard` route alias (`app.get(['/', '/dashboard'], ...)`), preventing 404 errors when navigating to the URL advertised in `README.md` and start scripts.
+   - Fixed `start.sh` UTF-8 BOM (`\xef\xbb\xbf`) that caused bash interpreter errors on Linux/macOS.
+   - Hardened `wabot/src/bot.js` Baileys session clearing (`clearAuthFolder()`) to avoid Docker volume mount locks (EBUSY).
+
+5. **Web Application & Packaging Polish (`ItemCard.vue`, `bundle.ps1`)**:
+   - Added `imgLoadFailed` state in `ItemCard.vue` to show a clean fallback placeholder ("Foto Tidak Dapat Dimuat") if an image fails to load.
+   - Updated `bundle.ps1` to ensure `wabot\auth_info_baileys` folder structure exists even when `-NoAuth` is specified.
+   - Re-generated deployable archive `smart-warehouse-bundle.zip`.
+
+

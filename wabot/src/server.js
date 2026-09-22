@@ -108,9 +108,9 @@ app.post('/api/simulate', async (req, res) => {
 });
 
 /**
- * Modern Dashboard Web Page
+ * Modern Dashboard Web Page (serves '/' and '/dashboard')
  */
-app.get('/', (req, res) => {
+app.get(['/', '/dashboard'], (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="id">
 <head>

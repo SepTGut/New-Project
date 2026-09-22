@@ -18,6 +18,8 @@ services:
     restart: unless-stopped
     ports:
       - "3001:3001"
+    env_file:
+      - ./wabot/.env
     environment:
       - PORT=3001
       - APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK/exec

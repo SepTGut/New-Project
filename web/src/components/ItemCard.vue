@@ -2,7 +2,7 @@
   <div class="item-card">
     <!-- Photo Column: Single main photo of the whole item -->
     <div class="card-photos">
-      <div v-if="mainPhotoUrl">
+      <div v-if="mainPhotoUrl && !imgLoadFailed">
         <img
           :src="mainPhotoUrl"
           class="card-img"
@@ -12,7 +12,7 @@
         />
       </div>
       <div v-else class="photo-placeholder">
-        Tanpa Foto
+        {{ imgLoadFailed ? 'Foto Tidak Dapat Dimuat' : 'Tanpa Foto' }}
       </div>
     </div>
 
@@ -146,6 +146,7 @@ const isEditing = ref(false);
 const saving = ref(false);
 const saveMessage = ref('');
 const saveSuccess = ref(false);
+const imgLoadFailed = ref(false);
 
 const foto1File = ref(null);
 const foto1Preview = ref('');
@@ -312,7 +313,7 @@ async function handleSaveEdit() {
       }, 1000);
     } else {
       saveSuccess.value = false;
-      saveMessage.value = res.message || 'Gagal memperbarui data.';
+      saveMessage.value = res.error || res.message || 'Gagal memperbarui data.';
     }
   } catch (err) {
     saveSuccess.value = false;
@@ -322,9 +323,9 @@ async function handleSaveEdit() {
   }
 }
 
-function handleImgError(idx) {
-  // Graceful fallback for broken image links
-  console.warn('Image load error at index', idx);
+function handleImgError() {
+  // Graceful fallback to styled placeholder on image load failure
+  imgLoadFailed.value = true;
 }
 
 function shareToWhatsApp() {

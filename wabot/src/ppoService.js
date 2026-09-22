@@ -66,7 +66,8 @@ const KOLOM_LAPORAN = [
   'Progres',
   'Status',
   'Kendala',
-  'Foto Bukti'
+  'Nama File Foto',
+  'Foto'
 ];
 
 let cacheGedung = [];
@@ -166,15 +167,19 @@ async function tulisSatuLaporanKeExcel(filePath, barisData, namaFileFoto) {
       sheet = workbook.worksheets[0];
     } catch (readErr) {
       console.warn(`[PPO] Could not read existing ${filePath}, creating fresh:`, readErr.message);
-      sheet = workbook.addWorksheet('Laporan Progress');
+      sheet = workbook.addWorksheet('Laporan');
     }
   } else {
-    sheet = workbook.addWorksheet('Laporan Progress');
+    sheet = workbook.addWorksheet('Laporan');
   }
 
-  // Ensure headers exist
+  // Ensure headers exist and match standard schema
   if (sheet.rowCount < 1 || !sheet.getRow(1).values || sheet.getRow(1).values.length <= 1) {
-    sheet.columns = KOLOM_LAPORAN.map(k => ({ header: k, key: k, width: 18 }));
+    sheet.columns = KOLOM_LAPORAN.map(k => ({
+      header: k,
+      key: k,
+      width: (k === 'Foto' || k === 'Waktu Input') ? 22 : (k === 'Progres' || k === 'Titik Lokasi') ? 35 : 18
+    }));
     sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     sheet.getRow(1).fill = {
       type: 'pattern',
@@ -194,7 +199,7 @@ async function tulisSatuLaporanKeExcel(filePath, barisData, namaFileFoto) {
   sheet.getCell(`F${rowNumber}`).alignment = { vertical: 'middle', horizontal: 'center' };
   sheet.getCell(`J${rowNumber}`).alignment = { vertical: 'middle', horizontal: 'center' };
 
-  // Embed photo in Excel if exists
+  // Embed photo in Excel if exists (Column M / index 12 is 'Foto')
   if (namaFileFoto) {
     const fotoPath = path.join(FOLDER_FOTO, namaFileFoto);
     if (fs.existsSync(fotoPath)) {
@@ -204,7 +209,7 @@ async function tulisSatuLaporanKeExcel(filePath, barisData, namaFileFoto) {
           extension: 'jpeg'
         });
         sheet.addImage(imageId, {
-          tl: { col: KOLOM_LAPORAN.length - 1, row: rowNumber - 1 },
+          tl: { col: 12, row: rowNumber - 1 },
           ext: { width: 90, height: 90 }
         });
         sheet.getRow(rowNumber).height = 75;
@@ -283,7 +288,8 @@ async function simpanLaporan(data) {
     'Progres': data.progres,
     'Status': data.status,
     'Kendala': data.kendala || '-',
-    'Foto Bukti': data.namaFileFoto || '-'
+    'Nama File Foto': data.namaFileFoto || '-',
+    'Foto': data.namaFileFoto ? '' : '-'
   };
 
   // 1. Write to primary local Excel
@@ -309,28 +315,101 @@ async function simpanLaporan(data) {
   };
 }
 
+// Built-in operational SOP FAQ knowledge base
+const SOP_FAQS = [
+  {
+    Pertanyaan: 'Bagaimana cara mengisi laporan progress pekerjaan (PPO)?',
+    Jawaban: 'Ketik *!lapor* atau *lapor*, lalu ikuti 7 langkah panduan: pilih gedung, tentukan sub pekerjaan (Mekanikal/Elektrikal), pilih titik lokasi, tulis progres pekerjaan, tentukan status (Open/Close), catat kendala (jika ada), dan lampirkan foto dokumentasi.'
+  },
+  {
+    Pertanyaan: 'Apakah wajib melampirkan foto saat lapor progress?',
+    Jawaban: 'Foto sangat disarankan untuk bukti validasi di lapangan. Namun jika kondisi tidak memungkinkan, Anda dapat mengetik *-* pada langkah foto untuk menyimpan laporan tanpa lampiran gambar.'
+  },
+  {
+    Pertanyaan: 'Bagaimana jika ada kendala teknis atau material di lapangan?',
+    Jawaban: 'Pada langkah *Kendala*, ketikkan detail masalah yang dihadapi secara singkat dan jelas (misal: "Material kabel belum tiba"). Laporan kendala otomatis masuk ke dashboard koordinator PPO.'
+  },
+  {
+    Pertanyaan: 'Bagaimana cara melakukan Stock Opname material gudang?',
+    Jawaban: '1. Login terlebih dahulu dengan *!login <username> <password>*\n2. Cari barang dengan *!cek <nama/kode>* atau ketik nama barang langsung\n3. Catat stok fisik baru dengan *!opname <kode_material> <jumlah_stok_baru>*'
+  },
+  {
+    Pertanyaan: 'Apa perbedaan Sub Pekerjaan Mekanikal dan Elektrikal?',
+    Jawaban: '• *Mekanikal:* Instalasi pipa, HVAC, pendingin udara, sanitasi, dan ducting.\n• *Elektrikal:* Panel listrik, penarikan kabel NYM/NYY, saklar, lampu penerangan, grounding, dan stop kontak.'
+  },
+  {
+    Pertanyaan: 'Bagaimana jika ingin membatalkan pengisian laporan?',
+    Jawaban: 'Cukup ketik *batal* kapan saja saat sedang mengisi formulir laporan. Bot akan membatalkan sesi dan kembali ke menu utama.'
+  },
+  {
+    Pertanyaan: 'Bagaimana cara memeriksa akun login atau hak akses saya?',
+    Jawaban: 'Ketik *!status* atau *!profil* untuk melihat nama petugas, username, hak akses (Admin/Staff), dan nomor WhatsApp Anda.'
+  }
+];
+
 /**
- * Searches FAQ database
+ * Searches FAQ database (Dual Engine: Operational SOP + Material Procurement Tracker)
  */
 function cariFaq(query) {
-  if (!fs.existsSync(FAQ_FILE_PATH)) return [];
   const cleanQ = String(query || '').trim().toLowerCase();
   if (!cleanQ) return [];
 
-  try {
-    const workbook = XLSX.readFile(FAQ_FILE_PATH);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rawFaq = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const tokens = cleanQ.split(/[\s,;|/]+/).filter(Boolean);
+  const results = [];
 
-    return rawFaq.filter(item => {
-      const q = String(item['Pertanyaan'] || item['pertanyaan'] || item['Question'] || '').toLowerCase();
-      const a = String(item['Jawaban'] || item['jawaban'] || item['Answer'] || '').toLowerCase();
-      return q.includes(cleanQ) || a.includes(cleanQ);
-    }).slice(0, 5);
-  } catch (err) {
-    console.error('[PPO] FAQ search error:', err.message);
-    return [];
+  // Engine 1: Match against Standard Operational Procedures (SOP)
+  for (const item of SOP_FAQS) {
+    const q = item.Pertanyaan.toLowerCase();
+    const a = item.Jawaban.toLowerCase();
+    const matchesAll = tokens.every(t => q.includes(t) || a.includes(t));
+    if (matchesAll) {
+      results.push(item);
+    }
   }
+
+  // Engine 2: Match against Material Procurement Tracking table in faq.xlsx
+  if (fs.existsSync(FAQ_FILE_PATH)) {
+    try {
+      const workbook = XLSX.readFile(FAQ_FILE_PATH);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+      // Range 3 skips project header rows to parse actual material columns
+      const rows = XLSX.utils.sheet_to_json(sheet, { range: 3, defval: '' });
+
+      const matMatches = [];
+      for (const row of rows) {
+        const desc = String(row['Description'] || '').trim();
+        const spec = String(row['SpecTech/ Material'] || '').trim();
+        const kode = String(row['Kode Material'] || '').trim();
+        const bangunan = String(row['Bangunan'] || '').trim();
+
+        if (!desc && !spec && !kode) continue;
+
+        const combined = `${desc} ${spec} ${kode} ${bangunan}`.toLowerCase();
+        const matchesAll = tokens.every(t => combined.includes(t));
+
+        if (matchesAll) {
+          const statusPo = String(row['Status PO'] || '-').trim();
+          const statusDatang = String(row['Status Kedatangan'] || '-').trim();
+          const eta = String(row['Target ETA REKA'] || '-').trim();
+          const qty = row['QTY/ SET\nBOM'] || row['Qty ter-PR'] || '-';
+          const unit = String(row['Unit'] || '').trim();
+
+          matMatches.push({
+            Pertanyaan: `[Material] ${desc || spec} (${bangunan || 'Semua Area'})`,
+            Jawaban: `Kode: \`${kode}\` | Qty BOM: *${qty} ${unit}*\n   • Status PO: *${statusPo}*\n   • Status Kedatangan: *${statusDatang}*\n   • Target ETA: *${eta}*`
+          });
+          if (matMatches.length >= 4) break;
+        }
+      }
+
+      results.push(...matMatches);
+    } catch (err) {
+      console.error('[PPO] Error querying material table in faq.xlsx:', err.message);
+    }
+  }
+
+  return results.slice(0, 5);
 }
 
 /**
