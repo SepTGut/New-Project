@@ -42,6 +42,7 @@ smart-warehouse-bundle-withauth/
 playwright-report/
 test-results/
 scratch/
+*.traineddata
 
 # Editor & OS Artifacts
 .DS_Store

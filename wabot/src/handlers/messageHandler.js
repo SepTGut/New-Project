@@ -18,6 +18,12 @@ const {
 } = require('../dataService');
 
 const {
+  scanMaterialCard,
+  scanBarcodeOrQr,
+  parseDecodedCode
+} = require('../barcodeService');
+
+const {
   getDaftarGedung,
   ambilTitikLokasi,
   simpanLaporan,
@@ -26,6 +32,14 @@ const {
   simpanSesiAktif,
   FOLDER_FOTO
 } = require('../ppoService');
+
+/**
+ * Safely extracts media buffer from real Baileys message or simulator mock
+ */
+async function extractMediaBuffer(msg) {
+  if (msg && msg.__simulatedBuffer) return msg.__simulatedBuffer;
+  return await downloadMediaMessage(msg, 'buffer', {});
+}
 
 // Map of authenticated user sessions: senderJid -> { username, name, role, loggedInAt }
 const sessions = new Map();
@@ -157,10 +171,10 @@ async function handleMessage(sock, msg) {
     }
 
     // =========================================================================
-    // 0.5. Dedicated Image Request Trigger: G / !g / !gambar / !foto
+    // 0.5. Dedicated Image Request Trigger: G / !g / !gambar / !foto (Text Only)
     // (Only includes photo when user explicitly requests with 'G')
     // =========================================================================
-    if (['g', 'gambar', 'foto'].includes(cmd) && !ppoSession) {
+    if (!hasImage && ['g', 'gambar', 'foto'].includes(cmd) && !ppoSession) {
       const rawArg = args.join(' ').trim();
       if (rawArg) {
         await executeStockSearch(sock, from, msg, rawArg, null, true);
@@ -184,6 +198,87 @@ async function handleMessage(sock, msg) {
     }
 
     // =========================================================================
+    // 0.6. Card Barcode / QR Code Image Auto-Scanner & OCR
+    // (Triggered whenever user uploads a photo of a card, barcode, or QR code)
+    // =========================================================================
+    if (hasImage && !ppoSession && !['lapor', 'login', 'opname', 'tambah'].includes(cmd)) {
+      try {
+        await sock.sendMessage(from, {
+          text: '📷 *Memproses foto...*\nSedang memindai Barcode / QR Code / Teks kartu material...'
+        }, { quoted: msg });
+
+        const buffer = await extractMediaBuffer(msg);
+        if (buffer && buffer.length > 0) {
+          const scanResult = await scanMaterialCard(buffer);
+
+          if (scanResult.success && scanResult.text) {
+            const parsed = parseDecodedCode(scanResult.text);
+
+            // Case A: User QR Login Badge (Printed from PrintUserQR)
+            if (parsed.type === 'user') {
+              if (parsed.username && parsed.password) {
+                await sock.sendMessage(from, {
+                  text: `🪪 *QR CODE LOGIN PENGGUNA TERDETEKSI*\n• Username: *${parsed.username}*\n• Role: *${parsed.role}*\n⏳ Memproses login otomatis...`
+                }, { quoted: msg });
+
+                const loginResult = await verifyLogin(parsed.username, parsed.password);
+                if (loginResult.success) {
+                  sessions.set(from, {
+                    username: parsed.username,
+                    name: loginResult.name || parsed.username,
+                    role: loginResult.role || parsed.role || 'Staff',
+                    loggedInAt: Date.now()
+                  });
+                  await sock.sendMessage(from, {
+                    text: `✅ *Login Berhasil!*\nSelamat datang, *${loginResult.name || parsed.username}* (*${loginResult.role || parsed.role}*).\nSesi Anda aktif.`
+                  }, { quoted: msg });
+                } else {
+                  await sock.sendMessage(from, {
+                    text: `❌ *Login Gagal:* ${loginResult.error || 'Kredensial pada QR code tidak valid.'}`
+                  }, { quoted: msg });
+                }
+                return;
+              }
+            }
+
+            // Case B: Material Barcode / QR Code or OCR Text (Printed from Material Card)
+            const targetCode = parsed.value || scanResult.text;
+            const captionFlag = cleanText.toLowerCase();
+            const withImage = /^[gG]$|(\b[gG]\b)|foto|gambar/i.test(captionFlag);
+
+            const modeLabel = scanResult.isOcr
+              ? `_(Mode: OCR Teks Kartu - ${scanResult.format})_`
+              : `_(Tipe: ${scanResult.format})_`;
+
+            await sock.sendMessage(from, {
+              text: `✅ *${scanResult.isOcr ? 'Teks Kartu' : 'Barcode/QR'} Berhasil Terdeteksi!*\n🏷️ *Kode Terbaca:* \`${targetCode}\` ${modeLabel}\n_Mengambil data material..._`
+            }, { quoted: msg });
+
+            await executeStockSearch(sock, from, msg, targetCode, null, withImage);
+            return;
+          } else {
+            // Neither barcode nor readable card text detected in the uploaded photo
+            await sock.sendMessage(from, {
+              text: `⚠️ *Barcode, QR Code, atau Teks Kartu Tidak Terdeteksi*\n\n💡 *Tips Pengambilan Foto:*
+1. Pastikan barcode atau kode pada kartu tampak jelas & fokus (tidak blur).
+2. Pastikan pencahayaan cukup terang dan kartu tidak terpotong.
+3. Arahkan kamera lebih dekat ke area barcode/kode barang.
+
+_Atau Anda bisa langsung mengetik kode barang (contoh: \`ITEM-1\`, \`wago\`)._`
+            }, { quoted: msg });
+            return;
+          }
+        }
+      } catch (scanErr) {
+        console.error('[BarcodeScanner] Gagal memproses gambar:', scanErr);
+        await sock.sendMessage(from, {
+          text: `⚠️ Terjadi kendala saat membaca foto: ${scanErr.message}\nSilakan coba kirim ulang atau ketik kode barang secara manual.`
+        }, { quoted: msg });
+        return;
+      }
+    }
+
+    // =========================================================================
     // 1. Help, Greetings & Unified Quick-Start Tutorial
     // =========================================================================
     if (['panduan', 'tutorial', 'cara'].includes(cmd) && !ppoSession) {
@@ -195,10 +290,13 @@ Selamat datang! Berikut panduan praktis menggunakan asisten bot:
 
 🔹 *1. CARA MENCARI BARANG GUDANG*
 Tidak perlu menghafal kode perintah rumit:
-1. Ketik langsung nama atau kode item ke chat (misal: \`ITEM-1\` atau \`wago\`) untuk detail teks cepat tanpa foto.
-2. Tambahkan huruf *G* di awal atau akhir (misal: \`G ITEM-1\`, \`ITEM-1 G\`, atau \`!g ITEM-1\`) untuk menampilkan foto barang dari Google Drive.
-3. Atau balas *(reply)* pesan detail barang dengan huruf *G*.
-4. Atau gunakan \`!cek <nama>\` jika ingin pencarian spesifik.
+1. *Pindai Kartu Material (Cepat):*
+   Cukup foto kartu material atau barcode rak & kirim langsung ke chat ini! Bot otomatis membaca barcode/QR code dan menampilkan datanya.
+2. *Pencarian Teks Cepat:*
+   Ketik langsung nama atau kode item ke chat (misal: \`ITEM-1\` atau \`wago\`) untuk detail teks cepat tanpa foto.
+3. *Foto Google Drive:*
+   Tambahkan huruf *G* (misal: \`G ITEM-1\`, \`ITEM-1 G\`, atau saat kirim foto kartu sertakan caption \`G\`) untuk melihat foto barang.
+4. Atau balas *(reply)* pesan detail barang dengan huruf *G*.
 
 
 🔹 *2. CARA UPDATE STOK (STOCK OPNAME)*
@@ -1061,11 +1159,19 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
 /**
  * Simulator function for web dashboard playground
  */
-async function simulateCommand(phone, messageText) {
+async function simulateCommand(phone, messageText, imageBuffer = null) {
   const simulatedMsg = {
     key: { remoteJid: `${phone.replace(/[^0-9]/g, '')}@s.whatsapp.net` },
     pushName: 'Web Simulator User',
-    message: { conversation: messageText }
+    message: imageBuffer ? {
+      imageMessage: {
+        caption: messageText || '',
+        mimetype: 'image/jpeg'
+      }
+    } : {
+      conversation: messageText
+    },
+    __simulatedBuffer: imageBuffer
   };
 
   const capturedReplies = [];

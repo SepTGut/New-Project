@@ -14,6 +14,10 @@
           <div class="spinner"></div>
           <div style="margin-top: 10px; font-size: 13px;">Mengaktifkan kamera...</div>
         </div>
+        <div v-if="processingFile" class="scanner-loading-overlay">
+          <div class="spinner"></div>
+          <div style="margin-top: 10px; font-size: 13px;">Memindai foto kartu...</div>
+        </div>
       </div>
 
       <div v-if="errorMessage" class="alert-box error" style="margin: 12px 16px 0 16px; font-size: 13px;">
@@ -21,9 +25,10 @@
       </div>
 
       <div class="scanner-modal-footer">
-        <div style="font-size: 12.5px; color: var(--text-muted);">
-          Arahkan kamera ke barcode atau QR code pada barang atau rak.
-        </div>
+        <label class="btn-file-scanner">
+          📁 <span>Unggah Foto</span>
+          <input type="file" accept="image/*" @change="onFileSelected" style="display: none;" />
+        </label>
         <button @click="close" class="btn-secondary" style="padding: 8px 16px; font-size: 13px;">
           Tutup
         </button>
@@ -46,8 +51,35 @@ const props = defineProps({
 const emit = defineEmits(['close', 'scan-success']);
 
 const loadingCamera = ref(false);
+const processingFile = ref(false);
 const errorMessage = ref('');
 let html5QrCode = null;
+
+async function onFileSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  errorMessage.value = '';
+  processingFile.value = true;
+
+  try {
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode('interactive-reader');
+    }
+    const decodedText = await html5QrCode.scanFile(file, false);
+    if (decodedText) {
+      handleSuccess(decodedText);
+    } else {
+      errorMessage.value = 'Barcode atau QR code tidak terdeteksi pada gambar.';
+    }
+  } catch (err) {
+    console.warn('File scan error:', err);
+    errorMessage.value = 'Tidak dapat membaca barcode/QR dari file ini. Pastikan foto fokus dan jelas.';
+  } finally {
+    processingFile.value = false;
+    event.target.value = '';
+  }
+}
 
 watch(
   () => props.isOpen,
@@ -202,5 +234,25 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   border-top: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-file-scanner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.btn-file-scanner:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 </style>

@@ -99,8 +99,13 @@ app.post('/api/reset-session', async (req, res) => {
  */
 app.post('/api/simulate', async (req, res) => {
   try {
-    const { phone = '6281200001111', message = '!menu' } = req.body;
-    const replies = await simulateCommand(phone, message);
+    const { phone = '6281200001111', message = '!menu', imageBase64 } = req.body;
+    let imageBuffer = null;
+    if (imageBase64) {
+      const base64Clean = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      imageBuffer = Buffer.from(base64Clean, 'base64');
+    }
+    const replies = await simulateCommand(phone, message, imageBuffer);
     const formattedReplies = replies.map(r => {
       if (r && r.image && Buffer.isBuffer(r.image)) {
         return {
@@ -247,16 +252,32 @@ app.get(['/', '/dashboard'], (req, res) => {
         </div>
 
         <div class="sim-form">
-          <input id="simInput" type="text" class="sim-input" placeholder="Ketik perintah (contoh: !menu, !lapor, !cek ITEM-1)" value="!menu" />
+          <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
+            <input id="simInput" type="text" class="sim-input" style="flex: 1; margin-bottom: 0; min-width: 200px;" placeholder="Ketik perintah (contoh: !menu, G ITEM-1)" value="!menu" />
+            <label for="simFileInput" class="chip" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; background: #334155; border: 1px dashed #64748B; border-radius: 8px; font-size: 13px; margin: 0; color: #F8FAFC;">
+              📷 <span>Foto Barcode/QR</span>
+              <input id="simFileInput" type="file" accept="image/*" style="display: none;" onchange="handleFileSelected(event)" />
+            </label>
+          </div>
+
+          <div id="simFilePreview" style="display: none; margin-bottom: 12px; align-items: center; gap: 10px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); padding: 8px 12px; border-radius: 8px;">
+            <img id="simPreviewImg" src="" style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid #475569;" />
+            <div style="flex: 1; font-size: 12px;">
+              <span id="simFileName" style="font-weight: 600; color: #93C5FD;">foto.jpg</span>
+              <div style="color: var(--text-muted);">Foto kartu siap dipindai Barcode / QR / OCR</div>
+            </div>
+            <button type="button" onclick="clearSelectedFile()" style="background: transparent; border: none; color: #F87171; cursor: pointer; font-size: 16px; padding: 4px 8px;">✕</button>
+          </div>
+
           <div class="quick-chips">
             <span class="chip" onclick="setCmd('!menu')">!menu</span>
             <span class="chip" onclick="setCmd('!lapor')">!lapor (PPO)</span>
             <span class="chip" onclick="setCmd('batal')">batal</span>
             <span class="chip" onclick="setCmd('!cek ITEM-1')">!cek ITEM-1 (Teks)</span>
             <span class="chip" onclick="setCmd('G ITEM-1')">G ITEM-1 (Foto)</span>
+            <span class="chip" onclick="setCmd('G')">G (Foto Saat Scan)</span>
             <span class="chip" onclick="setCmd('!status')">!status</span>
             <span class="chip" onclick="setCmd('!login admin admin123')">!login admin</span>
-            <span class="chip" onclick="setCmd('!faq lampu')">!faq lampu</span>
           </div>
           <button id="simBtn" class="sim-btn" onclick="runSimulate()">Kirim Perintah</button>
 
@@ -413,22 +434,51 @@ app.get(['/', '/dashboard'], (req, res) => {
       }
     }
 
+    let selectedImageBase64 = null;
+
+    function handleFileSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        selectedImageBase64 = e.target.result;
+        document.getElementById('simPreviewImg').src = selectedImageBase64;
+        document.getElementById('simFileName').textContent = file.name;
+        document.getElementById('simFilePreview').style.display = 'flex';
+        if (document.getElementById('simInput').value === '!menu') {
+          document.getElementById('simInput').value = '';
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearSelectedFile() {
+      selectedImageBase64 = null;
+      document.getElementById('simFileInput').value = '';
+      document.getElementById('simFilePreview').style.display = 'none';
+      document.getElementById('simPreviewImg').src = '';
+    }
+
     async function runSimulate() {
       const input = document.getElementById('simInput').value;
       const btn = document.getElementById('simBtn');
       const out = document.getElementById('simOutput');
 
-      if (!input.trim()) return;
+      if (!input.trim() && !selectedImageBase64) return;
 
       btn.disabled = true;
       btn.textContent = 'Memproses...';
-      out.textContent = 'Mengirim perintah ke bot...';
+      out.textContent = selectedImageBase64 ? 'Mengunggah & memindai foto kartu...' : 'Mengirim perintah ke bot...';
 
       try {
         const res = await fetch('/api/simulate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: '6281299998888', message: input })
+          body: JSON.stringify({
+            phone: '6281299998888',
+            message: input,
+            imageBase64: selectedImageBase64
+          })
         });
         const data = await res.json();
         if (data.replies && data.replies.length > 0) {
