@@ -23,10 +23,11 @@ services:
     environment:
       - PORT=3001
       - APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK/exec
-      - DATABASE_CSV_URL=https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/export?format=csv&gid=1367299058
+      - DATABASE_CSV_URL=https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/gviz/tq?tqx=out:csv&sheet=Opname
       - AUTH_FOLDER=/app/auth_info_baileys
       - DATA_DIR=/app/data
       - PUBLIC_WEB_URL=${PUBLIC_WEB_URL:-}
+      - ADMIN_NOTIFY_NUMBER=${ADMIN_NOTIFY_NUMBER:-}
     volumes:
       - ./wabot/auth_info_baileys:/app/auth_info_baileys
       - ./data/ppo:/app/data
@@ -35,11 +36,12 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflare_tunnel
     restart: unless-stopped
-    # Free random URL tunnel - no domain/account needed
-    # Protocol http2 prevents ISP UDP port 7844 blocking
-    # Metrics API on port 2000 lets the bot fetch live URL via:
-    #   GET http://cloudflared:2000/quicktunnel -> {"hostname":"abc123.trycloudflare.com"}
-    command: tunnel --no-autoupdate --protocol http2 --url http://stock-opname-web:80 --metrics 0.0.0.0:2000
+    # Quick Tunnel mode: generates a free *.trycloudflare.com URL (no domain/account required).
+    # URL changes on each restart — bot will WhatsApp it to admin automatically.
+    # --metrics exposes the live URL at http://cloudflared:2000/quicktunnel for the !link command.
+    # --protocol http2 forces TCP:443 instead of UDP:7844 (ISPs in ID/SEA block UDP 7844).
+    # To use a permanent domain: set CLOUDFLARE_TUNNEL_TOKEN in .env and switch to:
+    #   command: tunnel --no-autoupdate --protocol http2 run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate --protocol http2 --metrics 0.0.0.0:2000 --url http://stock-opname-web:80
     depends_on:
       - stock-opname-web
-      - stock-opname-wabot

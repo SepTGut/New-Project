@@ -5,6 +5,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const http = require('http');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 const {
@@ -14,7 +16,12 @@ const {
   updateOpname,
   addMaterial,
   fetchImageBuffer,
-  resolveDrivePhoto
+  resolveDrivePhoto,
+  normalizePhone,
+  getUserByPhone,
+  addPhoneToUser,
+  removePhone,
+  refreshPhoneCache
 } = require('../dataService');
 
 const {
@@ -43,8 +50,11 @@ async function extractMediaBuffer(msg) {
   return await downloadMediaMessage(msg, 'buffer', {});
 }
 
-// Map of authenticated user sessions: senderJid -> { username, name, role, loggedInAt }
+// Map of authenticated user sessions: senderJid -> { username, name, role, phone, autoLoggedIn, loggedInAt }
 const sessions = new Map();
+
+// Set of sender JIDs that have already received the unregistered number greeting in this process run
+const guestPromptedSet = new Set();
 
 // Map of active in-progress PPO report sessions: senderJid -> { step, gedung, ... }
 const ppoSessions = muatSesiAktif();
@@ -65,6 +75,7 @@ function getActiveSessions() {
       username: s.username,
       name: s.name,
       role: s.role,
+      autoLoggedIn: !!s.autoLoggedIn,
       loggedInAt: s.loggedInAt
     });
   }
@@ -115,14 +126,33 @@ function teksMenuGedung() {
 async function handleMessage(sock, msg) {
   const startTime = Date.now();
   try {
-    const from = msg.key.remoteJid;
+    let from = msg.key.remoteJid;
     if (!from || from.endsWith('@g.us')) {
       // Ignore group chats by default
       return;
     }
 
+    // --- LID Resolution ---
+    // WhatsApp multi-device may use LID-based JIDs (@lid) instead of phone JIDs (@s.whatsapp.net).
+    // We resolve the real phone JID so auth lookup works correctly.
+    if (from.endsWith('@lid')) {
+      // Try to resolve from Baileys store (sock.store)
+      const resolved = sock.store?.contacts?.[from]?.lid
+        ? null  // lid field is itself a lid, skip
+        : sock.store?.contacts?.[from]?.jid || null;
+      if (resolved && resolved.endsWith('@s.whatsapp.net')) {
+        from = resolved;
+      } else if (msg.key.participant && !msg.key.participant.endsWith('@lid')) {
+        from = msg.key.participant;
+      }
+      // If still unresolved, from remains as LID — auth will fail gracefully (guest)
+    }
+
     const messageContent = msg.message;
     if (!messageContent) return;
+
+    // DEBUG: log raw JID to diagnose LID vs phone issues (remove after fix confirmed)
+    logger.info('DEBUG_JID', `remoteJid=${msg.key.remoteJid} | resolved_from=${from} | pushName=${msg.pushName}`);
 
     let text = '';
     const hasImage = !!messageContent.imageMessage;
@@ -161,13 +191,45 @@ async function handleMessage(sock, msg) {
     const args = parts.slice(1);
 
     // Active auth session
-    const session = sessions.get(from);
+    let session = sessions.get(from);
+
+    // Auto-login by Phone Number:
+    // If user is not yet logged in, check if their WhatsApp phone number is registered in Google Sheets
+    if (!session) {
+      try {
+        const phoneAuth = await getUserByPhone(from);
+        if (phoneAuth.success && phoneAuth.user) {
+          session = {
+            username: phoneAuth.user.username,
+            name: phoneAuth.user.name || phoneAuth.user.username,
+            role: phoneAuth.user.role || 'User',
+            phone: phoneAuth.user.phone || normalizePhone(from),
+            autoLoggedIn: true,
+            loggedInAt: new Date()
+          };
+          sessions.set(from, session);
+          logger.info('AUTH', `Auto-login berhasil untuk ${session.name} (${session.username} - ${session.role}) dari nomor ${formatPhone(from)}`);
+        }
+      } catch (e) {
+        // Fallback silently if phone check encounters network error
+      }
+    }
 
     // Active PPO report session
     const ppoSession = ppoSessions.get(from);
 
+    // Unregistered phone number greeting prompt (shown once per session)
+    if (!session && !guestPromptedSet.has(from) && !['login', 'batal'].includes(cmd) && !ppoSession) {
+      guestPromptedSet.add(from);
+      await sock.sendMessage(from, {
+        text: `👋 *Halo!* Nomor WhatsApp Anda (*${formatPhone(from)}*) belum terdaftar di sistem gudang.\n\n` +
+              `ℹ️ Anda dapat mencari stok (\`!cek\`) dan melihat panduan (\`!menu\`), namun untuk otorisasi perubahan data stok (\`!opname\`), silakan hubungi Admin atau login manual dengan:\n` +
+              `👉 \`!login <username> <password>\``
+      }, { quoted: msg });
+    }
+
     // Log command if explicit or recognized keyword
-    if (text.startsWith('!') || ['menu', 'cek', 'opname', 'tambah', 'lapor', 'batal', 'login', 'logout', 'status', 'panduan', 'faq', 'link', 'url', 'web'].includes(cmd)) {
+    if (text.startsWith('!') || ['menu', 'cek', 'opname', 'tambah', 'phone', 'nomor', 'nohp', 'lapor', 'batal', 'login', 'logout', 'status', 'panduan', 'faq', 'link', 'url', 'web'].includes(cmd)) {
       logger.cmd(cmd, args, { role: session?.role });
     }
 
@@ -176,17 +238,19 @@ async function handleMessage(sock, msg) {
     // =========================================================================
     // If the user sends a plain number (optionally followed by G/gambar/foto),
     // and a recent search list is cached for this user, select that item directly.
+    // NOTE: Pure numbers are NEVER forwarded to searchItems to avoid false matches
+    // (e.g. typing "11" should never return "ITEM-11" by accident).
     if (!ppoSession) {
       const numericMatch = text.trim().match(/^(\d+)(\s+[gG]|\s+(?:gambar|foto))?$/i);
       if (numericMatch) {
         const searchSession = searchSessions.get(from);
-        const SEARCH_TTL_MS = 5 * 60 * 1000; // 5 minutes
+        const SEARCH_TTL_MS = 10 * 60 * 1000; // 10 minutes
         if (searchSession && (Date.now() - searchSession.timestamp) < SEARCH_TTL_MS) {
           const idx = parseInt(numericMatch[1], 10) - 1; // 0-based index
           const wantImage = !!(numericMatch[2] && numericMatch[2].trim());
           if (idx >= 0 && idx < searchSession.results.length) {
             const chosen = searchSession.results[idx];
-            searchSessions.delete(from); // consume the session after selection
+            // Do NOT delete session — user may want to pick again or follow up with G
             await executeStockSearch(sock, from, msg, chosen.kodeMaterial, [chosen], wantImage || searchSession.withImage);
             return;
           } else {
@@ -195,6 +259,12 @@ async function handleMessage(sock, msg) {
             }, { quoted: msg });
             return;
           }
+        } else {
+          // No active search session — block pure numbers from searching (would match ITEM-N)
+          await sock.sendMessage(from, {
+            text: `🔢 Ketik *nomor* hanya setelah mencari material terlebih dahulu.\n_Contoh: ketik_ \`relay\` _dulu, lalu pilih nomor dari daftar hasil._\n\n💡 _Atau langsung ketik kode/nama barang untuk mencari._`
+          }, { quoted: msg });
+          return;
         }
       }
     }
@@ -245,7 +315,10 @@ async function handleMessage(sock, msg) {
 
       try {
         // cloudflared exposes live tunnel info at http://cloudflared:2000/quicktunnel
-        const cfRes = await axios.get('http://cloudflared:2000/quicktunnel', { timeout: 4000 });
+        const cfRes = await axios.get('http://cloudflared:2000/quicktunnel', {
+          httpAgent: new http.Agent({ family: 4 }),
+          timeout: 4000
+        });
         const hostname = cfRes.data && cfRes.data.hostname;
         if (hostname) {
           const liveUrl = `https://${hostname}`;
@@ -322,15 +395,16 @@ async function handleMessage(sock, msg) {
                 }, { quoted: msg });
 
                 const loginResult = await verifyLogin(parsed.username, parsed.password);
-                if (loginResult.success) {
+                if (loginResult.success && loginResult.user) {
+                  const lu = loginResult.user;
                   sessions.set(from, {
-                    username: parsed.username,
-                    name: loginResult.name || parsed.username,
-                    role: loginResult.role || parsed.role || 'Staff',
+                    username: lu.username || parsed.username,
+                    name: lu.name || parsed.username,
+                    role: lu.role || parsed.role || 'Staff',
                     loggedInAt: Date.now()
                   });
                   await sock.sendMessage(from, {
-                    text: `✅ *Login Berhasil!*\nSelamat datang, *${loginResult.name || parsed.username}* (*${loginResult.role || parsed.role}*).\nSesi Anda aktif.`
+                    text: `✅ *Login Berhasil via QR!*\nSelamat datang, *${lu.name || parsed.username}* (*${lu.role || parsed.role}*).\nSesi Anda aktif.`
                   }, { quoted: msg });
                 } else {
                   await sock.sendMessage(from, {
@@ -458,9 +532,12 @@ Butuh info SOP atau status pengadaan material?
   \`!cek <kata_kunci>\`
   _Contoh:_ \`!cek kabel NYM\`
 
-• *Update Stok Fisik:*
-  \`!opname <kode_material> <jumlah_baru>\`
-  _Contoh:_ \`!opname ITEM-1 50\` *(Perlu login)*
+• *Update Stok Fisik & Foto:*
+  \`!opname <kode> <jumlah>\` _(set stok baru)_
+  \`!opname <kode> +<jumlah>\` _(tambah, misal: +1)_
+  \`!opname <kode> -<jumlah>\` _(kurang, misal: -1)_
+  _💡 Tips: Sertakan foto saat kirim !opname untuk update foto material ke Drive._
+  _Contoh:_ \`!opname ITEM-1 +1\` *(Perlu login)*
 
 • *Tambah Barang Baru (Admin):*
   \`!tambah <rak> | <kode> | <nama> | <qty> | <uom> | <deskripsi>\`
@@ -525,9 +602,9 @@ _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk\`, \`RE02.1\`
   ➔ Tampilkan kartu detail beserta FOTO Google Drive
   _Contoh:_ \`G ITEM-1\`, \`ITEM-1 G\`, \`!g wago\`
 
-• \`!opname <kode> <jumlah>\`
-  ➔ Update jumlah fisik stok gudang
-  _Contoh:_ \`!opname ITEM-1 50\` *(Perlu Login)*
+• \`!opname <kode> <jumlah>\`  *(atau \`+1\`, \`-1\`)*
+  ➔ Update jumlah fisik stok gudang (bisa kirim beserta foto)
+  _Contoh:_ \`!opname ITEM-1 +1\`, \`!opname ITEM-1 50\` *(Perlu Login)*
 
 • \`!tambah <rak> | <kode> | <nama> | <qty> | <uom> | <ket>\`
   ➔ Daftarkan material baru *(Khusus Admin)*
@@ -552,6 +629,7 @@ _Contoh:_ \`wago\`, \`ITEM-1\`, \`san disk\`, \`RE02.1\`
 • \`!login <user> <pass>\` ➔ Masuk akun petugas
 • \`!status\` ➔ Periksa profil & hak akses aktif
 • \`!logout\` ➔ Keluar sesi
+• \`!phone\` ➔ Kelola nomor WhatsApp auto-login _(Khusus Admin)_
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -895,7 +973,7 @@ Nomor Anda kini telah memiliki otorisasi untuk melakukan *!opname* dan perubahan
         const u = sessions.get(from).name;
         sessions.delete(from);
         await sock.sendMessage(from, {
-          text: `🔒 *Sesi Berakhir:* Petugas *${u}* telah keluar. Anda kini berstatus sebagai Tamu.`
+          text: `🔒 *Sesi Berakhir:* Petugas *${u}* telah keluar. Anda kini berstatus sebagai Tamu.\n_Catatan: Jika nomor Anda terdaftar di sistem, pesan berikutnya akan otomatis login kembali._`
         }, { quoted: msg });
       } else {
         await sock.sendMessage(from, {
@@ -914,6 +992,7 @@ Nomor Anda kini telah memiliki otorisasi untuk melakukan *!opname* dan perubahan
           hour: '2-digit',
           minute: '2-digit'
         });
+        const loginMethod = session.autoLoggedIn ? '⚡ Otomatis (Nomor WhatsApp Terdaftar)' : '🔑 Kredensial Manual / QR Code';
         const statusText =
 `👤 *PROFIL PENGGUNA TERHUBUNG*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -921,6 +1000,7 @@ Nomor Anda kini telah memiliki otorisasi untuk melakukan *!opname* dan perubahan
 • Username     : *${session.username}*
 • Hak Akses    : *${session.role}*
 • Nomor WA     : *${formatPhone(from)}*
+• Metode Login : *${loginMethod}*
 • Waktu Login  : *${loginTimeStr} WIB*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Status: *Aktif & Berwenang mencatat Opname* ✅`;
@@ -967,30 +1047,96 @@ Status: *Aktif & Berwenang mencatat Opname* ✅`;
         return;
       }
 
-      if (args.length < 2) {
+      // Extract image buffer if an image was attached
+      let imageBase64 = null;
+      if (hasImage) {
+        try {
+          const buf = await extractMediaBuffer(msg);
+          if (buf && buf.length > 0) {
+            imageBase64 = buf.toString('base64');
+          }
+        } catch (err) {
+          logger.warn(`Gagal mengunduh media opname: ${err.message}`);
+        }
+      }
+
+      let targetCode = '';
+      let targetQty = null;
+
+      if (args.length >= 2) {
+        targetCode = args[0];
+        targetQty = args[1];
+      } else if (args.length === 1 && imageBase64) {
+        // Photo-only update
+        targetCode = args[0];
+        targetQty = null;
+      } else {
         await sock.sendMessage(from, {
-          text: '⚠️ *Format:* `!opname <kode_material> <jumlah_stok_baru>`\n_Contoh:_ `!opname ITEM-04 150`'
+          text: `⚠️ *Format Perintah Opname:*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+• *Ubah stok absolut :* \`!opname <kode> <jumlah>\`
+  _Contoh:_ \`!opname ITEM-04 150\`
+• *Tambah stok       :* \`!opname <kode> +<jumlah>\`
+  _Contoh:_ \`!opname ITEM-04 +1\`
+• *Kurang stok       :* \`!opname <kode> -<jumlah>\`
+  _Contoh:_ \`!opname ITEM-04 -1\`
+• *Update foto saja  :* Kirim foto dengan caption \`!opname <kode>\`
+• *Stok + Foto       :* Kirim foto dengan caption \`!opname <kode> <jumlah atau +1/-1>\``
         }, { quoted: msg });
         return;
       }
 
-      const [targetCode, targetQty] = args;
-      await sock.sendMessage(from, { text: `⏳ Memperbarui stok *${targetCode}* ke Google Sheets...` }, { quoted: msg });
+      const waitMsg = imageBase64
+        ? `⏳ Memproses opname dan mengunggah foto *${targetCode}* ke Google Drive...`
+        : `⏳ Memperbarui stok *${targetCode}* ke Google Sheets...`;
+      await sock.sendMessage(from, { text: waitMsg }, { quoted: msg });
 
-      const opnameRes = await updateOpname(targetCode, targetQty, session.name);
+      const opnameRes = await updateOpname(targetCode, targetQty, session.name, imageBase64);
       if (opnameRes.success) {
         logger.opname(opnameRes.kodeMaterial || targetCode, opnameRes.namaBarang || targetCode, opnameRes.oldQty, opnameRes.newQty, session.name);
+
+        let deltaInfo = '';
+        if (opnameRes.isDelta) {
+          deltaInfo = ` (${opnameRes.delta >= 0 ? '+' : ''}${opnameRes.delta})`;
+        } else if (opnameRes.isPhotoOnly) {
+          deltaInfo = ' _(Stok tidak berubah)_';
+        }
+
+        let clampNote = '';
+        if (opnameRes.clamped) {
+          clampNote = '\n⚠️ *Catatan:* _Stok otomatis disesuaikan ke 0 (pengurangan melebihi sisa stok)._';
+        }
+
+        let transBadge = '';
+        if (opnameRes.tipe === 'MASUK') {
+          transBadge = `\n📥 *Transaksi     :* *BARANG MASUK (+${opnameRes.jumlah})*`;
+        } else if (opnameRes.tipe === 'KELUAR') {
+          transBadge = `\n📤 *Transaksi     :* *BARANG KELUAR (-${opnameRes.jumlah})*`;
+        }
+
+        let riwayatAkumulasi = '';
+        if (opnameRes.totalMasuk !== undefined && opnameRes.totalKeluar !== undefined) {
+          riwayatAkumulasi = `\n📊 *Total Riwayat :* Masuk ${opnameRes.totalMasuk} | Keluar ${opnameRes.totalKeluar}`;
+        }
+
+        let photoBadge = '';
+        if (opnameRes.photoUpdated) {
+          photoBadge = `\n📸 *Foto ${opnameRes.photoSlot || 1}        :* _Berhasil diunggah ke Google Drive_`;
+        } else if (imageBase64) {
+          photoBadge = '\n⚠️ *Foto          :* _Gagal diunggah ke Google Drive_';
+        }
+
         const confirmText =
 `✅ *STOCK OPNAME BERHASIL DIPERBARUI!*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🏷️ *Kode Material :* \`${opnameRes.kodeMaterial || targetCode}\`
 📦 *Nama Barang   :* *${opnameRes.namaBarang || '-'}*
-📍 *Lokasi Rak    :* *${opnameRes.lokasiRak || '-'}*
+📍 *Lokasi Rak    :* *${opnameRes.lokasiRak || '-'}*${transBadge}
 📉 *Stok Sebelum  :* ${opnameRes.oldQty} ${opnameRes.uom || 'PCS'}
-📈 *Stok Fisik    :* *${opnameRes.newQty} ${opnameRes.uom || 'PCS'}*
+📈 *Stok Fisik    :* *${opnameRes.newQty} ${opnameRes.uom || 'PCS'}*${deltaInfo}${clampNote}${riwayatAkumulasi}${photoBadge}
 👤 *Dicatat Oleh  :* *${session.name}*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-_Perubahan langsung aktif di spreadsheet master gudang._`;
+📋 _Riwayat transaksi otomatis dicatat di sheet Log master gudang._`;
 
         await sock.sendMessage(from, { text: confirmText }, { quoted: msg });
       } else {
@@ -1069,6 +1215,138 @@ _Data langsung aktif dan siap digunakan untuk opname._`;
       return;
     }
 
+    // =========================================================================
+    // 11. Phone Number Management: !phone / !nomor (Admin Only)
+    // =========================================================================
+    if (['phone', 'nomor', 'nohp'].includes(cmd)) {
+      if (!session) {
+        await sock.sendMessage(from, {
+          text: '⚠️ Anda harus login sebagai *Admin* untuk mengelola nomor telepon pengguna.\nKetik: `!login <user> <pass>`'
+        }, { quoted: msg });
+        return;
+      }
+
+      if (session.role.toLowerCase() !== 'admin' && session.role.toLowerCase() !== 'iit') {
+        await sock.sendMessage(from, {
+          text: `⛔ Perintah ini memerlukan hak akses *Admin*. Akun Anda saat ini adalah *${session.role}*.`
+        }, { quoted: msg });
+        return;
+      }
+
+      const subAction = (args[0] || '').toLowerCase();
+
+      // 11.1. Add Phone: !phone add <username> <phone>
+      if (['add', 'tambah', 'daftar'].includes(subAction)) {
+        if (args.length < 3) {
+          await sock.sendMessage(from, {
+            text: '⚠️ *Format Tambah Nomor:* `!phone add <username> <nomor_wa>`\n_Contoh:_ `!phone add user1 08123456789`'
+          }, { quoted: msg });
+          return;
+        }
+
+        const targetUser = args[1].trim();
+        const targetPhone = args[2].trim();
+
+        await sock.sendMessage(from, {
+          text: `⏳ Menghubungkan nomor *${targetPhone}* ke akun *${targetUser}* di Google Sheets...`
+        }, { quoted: msg });
+
+        const addPhoneRes = await addPhoneToUser(targetUser, targetPhone);
+        if (addPhoneRes.success) {
+          const successPhoneText =
+`✅ *PENDAFTARAN NOMOR BERHASIL!*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 *Username :* \`${targetUser}\`
+📞 *Nomor WA  :* \`+${normalizePhone(targetPhone)}\`
+ℹ️ *Status   :* ${addPhoneRes.message || 'Berhasil ditautkan.'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Pengguna kini dapat langsung mengirim pesan untuk auto-login tanpa memasukkan password._`;
+          await sock.sendMessage(from, { text: successPhoneText }, { quoted: msg });
+        } else {
+          await sock.sendMessage(from, {
+            text: `❌ *Gagal Mendaftarkan Nomor:* ${addPhoneRes.error || 'Terjadi kesalahan sistem.'}`
+          }, { quoted: msg });
+        }
+        return;
+      }
+
+      // 11.2. Remove Phone: !phone remove <phone>
+      if (['remove', 'hapus', 'del', 'delete'].includes(subAction)) {
+        if (args.length < 2) {
+          await sock.sendMessage(from, {
+            text: '⚠️ *Format Hapus Nomor:* `!phone remove <nomor_wa>`\n_Contoh:_ `!phone remove 08123456789`'
+          }, { quoted: msg });
+          return;
+        }
+
+        const targetPhone = args[1].trim();
+
+        await sock.sendMessage(from, {
+          text: `⏳ Menghapus nomor *${targetPhone}* dari Google Sheets...`
+        }, { quoted: msg });
+
+        const remPhoneRes = await removePhone(targetPhone);
+        if (remPhoneRes.success) {
+          await sock.sendMessage(from, {
+            text: `✅ *Penghapusan Berhasil!*\n${remPhoneRes.message || `Nomor ${targetPhone} telah dihapus.`}`
+          }, { quoted: msg });
+        } else {
+          await sock.sendMessage(from, {
+            text: `❌ *Gagal Menghapus Nomor:* ${remPhoneRes.error || 'Nomor tidak ditemukan.'}`
+          }, { quoted: msg });
+        }
+        return;
+      }
+
+      // 11.3. List Phones: !phone list
+      if (['list', 'daftar', 'semua', 'all'].includes(subAction)) {
+        await sock.sendMessage(from, { text: '⏳ Mengambil daftar nomor dari database...' }, { quoted: msg });
+        const cacheMap = await refreshPhoneCache(true);
+        if (!cacheMap || cacheMap.size === 0) {
+          await sock.sendMessage(from, {
+            text: 'ℹ️ Belum ada nomor WhatsApp yang terdaftar di Google Sheets (Kolom Phone Number).'
+          }, { quoted: msg });
+          return;
+        }
+
+        const lines = [];
+        let num = 1;
+        for (const [phone, u] of cacheMap.entries()) {
+          lines.push(`${num++}. *${u.name}* (@${u.username} - _${u.role}_)\n   📞 \`+${phone}\``);
+        }
+
+        const listText =
+`📱 *DAFTAR NOMOR WHATSAPP TERDAFTAR*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+${lines.join('\n\n')}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Total: *${cacheMap.size} nomor* terdaftar untuk auto-login.`;
+        await sock.sendMessage(from, { text: listText }, { quoted: msg });
+        return;
+      }
+
+      // Help for !phone
+      const helpPhone =
+`📱 *PANDUAN MANAJEMEN NOMOR (ADMIN)*
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Kelola nomor WhatsApp staf gudang untuk fitur auto-login:
+
+• *Daftarkan Nomor:*
+  \`!phone add <username> <nomor_wa>\`
+  _Contoh:_ \`!phone add user1 08123456789\`
+
+• *Hapus Nomor:*
+  \`!phone remove <nomor_wa>\`
+  _Contoh:_ \`!phone remove 08123456789\`
+
+• *Lihat Semua Nomor Terdaftar:*
+  \`!phone list\`
+━━━━━━━━━━━━━━━━━━━━━━━━━
+_Pengguna yang nomornya terdaftar akan otomatis login begitu mengirim pesan._`;
+      await sock.sendMessage(from, { text: helpPhone }, { quoted: msg });
+      return;
+    }
+
     // Direct search for commands starting with prefix or unrecognized commands
     if (text.startsWith('!') || text.startsWith('/') || text.startsWith('#')) {
       const queryFromPrefix = text.replace(/^[!/#]+/, '').trim();
@@ -1101,7 +1379,10 @@ _Data langsung aktif dan siap digunakan untuk opname._`;
     }
 
     const commonWords = ['ok', 'siap', 'ya', 'y', 'tidak', 't', 'p', 'tes', 'test', 'halo', 'hai', 'hello', 'hi', 'makasih', 'terima kasih', 'thanks', 'thx'];
-    if (plainQuery.length >= 2 && !commonWords.includes(plainQuery.toLowerCase())) {
+    // Never search with a plain number — that was handled (and blocked) in section 0.1 above.
+    // Searching for "11" would falsely match ITEM-11 or row-11 data.
+    const isPureNumber = /^\d+$/.test(plainQuery);
+    if (!isPureNumber && plainQuery.length >= 2 && !commonWords.includes(plainQuery.toLowerCase())) {
       const matches = await searchItems(plainQuery);
       if (matches && matches.length > 0) {
         await executeStockSearch(sock, from, msg, plainQuery, matches, directImage);
@@ -1183,6 +1464,10 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
   if (results.length === 1 || exactMatch) {
     const item = exactMatch || results[0];
 
+    const inOutInfo = (item.masuk !== undefined || item.keluar !== undefined)
+      ? `\n🔄 *Mutasi Masuk/Keluar :* Masuk ${item.masuk || 0} | Keluar ${item.keluar || 0}`
+      : '';
+
     // If user did NOT say G: send quick clean text without downloading image
     if (!needImage) {
       const textOnlyCaption =
@@ -1191,7 +1476,7 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
 🏷️ *Kode Material :* \`${item.kodeMaterial}\`
 📝 *Nama Barang   :* *${item.namaBarang}*
 📍 *Lokasi Rak    :* *${item.lokasiRak}*
-📊 *Jumlah Stok   :* *${item.qty} ${item.uom}*
+📊 *Jumlah Stok   :* *${item.qty} ${item.uom}*${inOutInfo}
 📄 *Spesifikasi   :* ${item.deskripsi || '-'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 🖼️ _Ketik *G ${item.kodeMaterial}* untuk melihat foto barang_
@@ -1209,7 +1494,7 @@ async function executeStockSearch(sock, from, msg, query, preloadedResults = nul
 🏷️ *Kode Material :* \`${item.kodeMaterial}\`
 📝 *Nama Barang   :* *${item.namaBarang}*
 📍 *Lokasi Rak    :* *${item.lokasiRak}*
-📊 *Jumlah Stok   :* *${item.qty} ${item.uom}*
+📊 *Jumlah Stok   :* *${item.qty} ${item.uom}*${inOutInfo}
 📄 *Spesifikasi   :* ${item.deskripsi || '-'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 💡 _Untuk update stok fisik, balas:_

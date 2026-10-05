@@ -82,14 +82,15 @@ const PrintCardService = {
    */
   getAllMaterialsList: function() {
     const ss = getSpreadsheetInstance();
-    const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+    const sheet = getMasterSheet(ss);
     if (!sheet) return [];
 
     const lastRow = sheet.getLastRow();
     if (lastRow < CONFIG.DATA_START_ROW) return [];
 
     const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+    const totalCols = CONFIG.TOTAL_COLS || 10;
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
     const list = [];
 
     for (let i = 0; i < values.length; i++) {
@@ -99,7 +100,7 @@ const PrintCardService = {
       const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
       const lokasi = String(row[CONFIG.COL.LOKASI_RAK - 1] || '').trim();
 
-      const hasContent = row.slice(1, 8).some(function(v) {
+      const hasContent = row.slice(1, totalCols).some(function(v) {
         return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
       });
 
@@ -155,10 +156,10 @@ const PrintCardService = {
   promptAndPrintSingle: function() {
     const ui = SpreadsheetApp.getUi();
     const ss = getSpreadsheetInstance();
-    const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+    const sheet = getMasterSheet(ss);
 
     if (!sheet) {
-      ui.alert('Peringatan', 'Sheet "' + CONFIG.SHEET_PICTFINDER + '" tidak ditemukan.', ui.ButtonSet.OK);
+      ui.alert('Peringatan', 'Sheet "' + CONFIG.SHEET_OPNAME + '" tidak ditemukan.', ui.ButtonSet.OK);
       return;
     }
 
@@ -166,7 +167,7 @@ const PrintCardService = {
     let defaultChoice = '1';
     try {
       const activeSheet = ss.getActiveSheet();
-      if (activeSheet && activeSheet.getName() === CONFIG.SHEET_PICTFINDER) {
+      if (activeSheet && (activeSheet.getName() === CONFIG.SHEET_OPNAME || activeSheet.getName() === 'PictFinder')) {
         const curRow = activeSheet.getActiveCell().getRow();
         if (curRow >= CONFIG.DATA_START_ROW) {
           const noVal = activeSheet.getRange(curRow, CONFIG.COL.NO).getValue();
@@ -207,12 +208,13 @@ const PrintCardService = {
    */
   buildSinglePrintData: function(rangeInput) {
     const ss = getSpreadsheetInstance();
-    const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+    const sheet = getMasterSheet(ss);
     if (!sheet) return null;
 
     const lastRow = Math.max(sheet.getLastRow(), CONFIG.DATA_START_ROW);
     const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+    const totalCols = CONFIG.TOTAL_COLS || 10;
+    const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
 
     // Map rows by No
     const itemMapByNo = {};

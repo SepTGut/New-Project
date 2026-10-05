@@ -27,7 +27,7 @@ const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL ||
   'https://script.google.com/macros/s/AKfycbyLDBXj86JNfidv5tgnryVygaEsbsuPePuOtVN7O2iYA4DE8dR2In5j2xfuuWU3AGOK/exec';
 
 const DATABASE_CSV_URL = process.env.DATABASE_CSV_URL ||
-  'https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/export?format=csv&gid=1367299058';
+  'https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/gviz/tq?tqx=out:csv&sheet=Opname';
 
 // In-memory cache for CSV inventory to ensure instant responses
 let cachedItems = [];
@@ -36,9 +36,10 @@ const CACHE_TTL_MS = 25000; // 25 seconds
 
 // Standard fallback credentials (matches Google Sheets User tab)
 const LOCAL_ACCOUNTS = [
-  { username: 'admin', pass: 'admin123', name: 'System Administrator', role: 'Admin' },
-  { username: 'user1', pass: 'user123', name: 'Warehouse Operator', role: 'User' },
-  { username: 'staff', pass: 'staff123', name: 'Warehouse Staff', role: 'User' }
+  { username: 'admin',    pass: 'admin123', name: 'System Administrator',        role: 'Admin' },
+  { username: 'user1',   pass: 'user123',  name: 'Warehouse Operator',           role: 'User'  },
+  { username: 'staff',   pass: 'staff123', name: 'Warehouse Staff',              role: 'User'  },
+  { username: 'iit_lead', pass: 'iit2026!', name: 'IT Support & Systems (Hidden)', role: 'IIT'  }
 ];
 
 // In-memory cache for downloaded image buffers to ensure lightning-fast WhatsApp replies
@@ -216,12 +217,14 @@ function parseCsv(csvText) {
     let kode = String(item['kode material'] || item['kode'] || '').trim();
     const nama = String(item['nama barang'] || item['nama'] || '').trim();
     const rak = String(item['lokasi rak'] || item['rak'] || item['lokasi'] || '-').trim();
+    const masuk = parseInt(item['masuk'] || '0', 10) || 0;
+    const keluar = parseInt(item['keluar'] || '0', 10) || 0;
     const qty = parseInt(item['qty'] || item['jumlah'] || '0', 10) || 0;
     const uom = String(item['uom'] || item['satuan'] || 'PCS').trim();
     const deskripsi = String(item['deskripsi'] || item['keterangan'] || '-').trim();
     let linkFoto = String(item['link foto'] || item['foto'] || '').trim();
     let fileId = extractDriveFileId(linkFoto);
-    const no = parseInt(item['no'] || String(items.length + 1), 10) || (items.length + 1);
+    const no = parseInt(item['no'] || item['stock opname gudang no'] || String(items.length + 1), 10) || (items.length + 1);
 
     if (!kode || kode === '-') {
       kode = `ITEM-${no}`;
@@ -242,6 +245,8 @@ function parseCsv(csvText) {
         lokasiRak: rak,
         kodeMaterial: kode,
         namaBarang: nama,
+        masuk: masuk,
+        keluar: keluar,
         qty: qty,
         uom: uom,
         deskripsi: deskripsi,
@@ -398,6 +403,182 @@ async function getItemByCode(kode) {
 }
 
 /**
+ * Normalizes phone numbers to canonical international format without plus (e.g. 628123456789)
+ */
+function normalizePhone(phone) {
+  if (!phone) return '';
+  let str = String(phone).trim();
+  str = str.split('@')[0].split(':')[0];
+  str = str.replace(/[^\d+]/g, '');
+  if (str.startsWith('+')) {
+    str = str.substring(1);
+  }
+  if (str.startsWith('0')) {
+    str = '62' + str.substring(1);
+  } else if (str.startsWith('8')) {
+    str = '62' + str;
+  }
+  return str;
+}
+
+// In-memory phone number to user mapping cache (TTL: 5 minutes)
+let cachedPhoneMappings = new Map(); // phone -> user object
+let lastPhoneCacheTime = 0;
+const PHONE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Refreshes phone number mappings from Google Apps Script
+ */
+async function refreshPhoneCache(force = false) {
+  if (!force && cachedPhoneMappings.size > 0 && (Date.now() - lastPhoneCacheTime) < PHONE_CACHE_TTL_MS) {
+    return cachedPhoneMappings;
+  }
+
+  try {
+    const res = await httpClient.post(APPS_SCRIPT_URL, {
+      action: 'get_all_phone_users'
+    }, {
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      timeout: 7000
+    });
+
+    if (res.data && res.data.success && Array.isArray(res.data.list)) {
+      const newMap = new Map();
+      for (const item of res.data.list) {
+        const cleanP = normalizePhone(item.phone);
+        if (cleanP) {
+          newMap.set(cleanP, {
+            phone: cleanP,
+            username: item.username,
+            name: item.name || item.username,
+            role: item.role || 'User',
+            email: item.email || '',
+            status: item.status || 'Active'
+          });
+        }
+      }
+      cachedPhoneMappings = newMap;
+      lastPhoneCacheTime = Date.now();
+      return cachedPhoneMappings;
+    }
+  } catch (err) {
+    // Silently continue if GAS request fails
+  }
+
+  return cachedPhoneMappings;
+}
+
+/**
+ * Looks up user by registered WhatsApp phone number
+ */
+async function getUserByPhone(phoneNumber) {
+  const cleanPhone = normalizePhone(phoneNumber);
+  if (!cleanPhone) {
+    return { success: false, error: 'Nomor telepon tidak valid.' };
+  }
+
+  // 1. Check in-memory phone cache first for instant auto-login
+  if (cachedPhoneMappings.size === 0 || (Date.now() - lastPhoneCacheTime) >= PHONE_CACHE_TTL_MS) {
+    await refreshPhoneCache();
+  }
+
+  if (cachedPhoneMappings.has(cleanPhone)) {
+    return {
+      success: true,
+      user: cachedPhoneMappings.get(cleanPhone)
+    };
+  }
+
+  // 2. Direct online check against Apps Script
+  try {
+    const res = await httpClient.post(APPS_SCRIPT_URL, {
+      action: 'get_user_by_phone',
+      phone: cleanPhone
+    }, {
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      timeout: 6000
+    });
+
+    if (res.data && res.data.success && res.data.user) {
+      cachedPhoneMappings.set(cleanPhone, res.data.user);
+      return { success: true, user: res.data.user };
+    } else if (res.data && res.data.error) {
+      return { success: false, error: res.data.error };
+    }
+  } catch (err) {}
+
+  return { success: false, error: 'Nomor telepon belum terdaftar.' };
+}
+
+/**
+ * Registers / binds a phone number to an existing user account in Google Sheets
+ */
+async function addPhoneToUser(username, phoneNumber) {
+  const u = String(username || '').trim();
+  const p = normalizePhone(phoneNumber);
+
+  if (!u || !p) {
+    return { success: false, error: 'Username dan nomor telepon wajib diisi.' };
+  }
+
+  try {
+    const res = await httpClient.post(APPS_SCRIPT_URL, {
+      action: 'add_phone',
+      username: u,
+      phone: p
+    }, {
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      timeout: 8000
+    });
+
+    if (res.data) {
+      if (res.data.success) {
+        // Refresh cache immediately
+        await refreshPhoneCache(true);
+      }
+      return res.data;
+    }
+  } catch (err) {
+    return { success: false, error: `Gagal menghubungi spreadsheet: ${err.message}` };
+  }
+
+  return { success: false, error: 'Terjadi kesalahan saat mendaftarkan nomor telepon.' };
+}
+
+/**
+ * Removes a phone number from Google Sheets
+ */
+async function removePhone(phoneNumber) {
+  const p = normalizePhone(phoneNumber);
+  if (!p) {
+    return { success: false, error: 'Nomor telepon wajib diisi.' };
+  }
+
+  try {
+    const res = await httpClient.post(APPS_SCRIPT_URL, {
+      action: 'remove_phone',
+      phone: p
+    }, {
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      timeout: 8000
+    });
+
+    if (res.data) {
+      if (res.data.success) {
+        // Invalidate in cache
+        cachedPhoneMappings.delete(p);
+        await refreshPhoneCache(true);
+      }
+      return res.data;
+    }
+  } catch (err) {
+    return { success: false, error: `Gagal menghubungi spreadsheet: ${err.message}` };
+  }
+
+  return { success: false, error: 'Terjadi kesalahan saat menghapus nomor telepon.' };
+}
+
+/**
  * Verifies user credentials
  */
 async function verifyLogin(username, password) {
@@ -444,34 +625,58 @@ async function verifyLogin(username, password) {
 }
 
 /**
- * Updates physical opname count in Google Sheets
+ * Updates physical opname count and/or material photo in Google Sheets
+ * @param {string} kode - Material code or item-N
+ * @param {string|number|null} qty - Absolute count, delta ("+1", "-1"), or null (photo-only)
+ * @param {string} username - Name of user recording opname
+ * @param {string|null} imageBase64 - Base64 encoded JPEG/PNG image data (optional)
  */
-async function updateOpname(kode, qty, username) {
+async function updateOpname(kode, qty, username, imageBase64) {
   const k = String(kode || '').trim();
-  const q = parseInt(qty, 10);
+  const qStr = (qty !== null && qty !== undefined && String(qty).trim() !== '') ? String(qty).trim() : null;
+  const b64 = imageBase64 && typeof imageBase64 === 'string' ? imageBase64.trim() : null;
 
-  if (!k || isNaN(q) || q < 0) {
-    return { success: false, error: 'Format: !opname <kode_material> <jumlah_stok_baru>' };
+  if (!k) {
+    return { success: false, error: 'Kode material wajib diisi.' };
+  }
+  if (qStr === null && !b64) {
+    return { success: false, error: 'Jumlah stok (qty) atau foto material wajib disertakan.' };
   }
 
   // Invalidate cache
   lastCacheTime = 0;
 
   try {
-    const res = await httpClient.post(APPS_SCRIPT_URL, {
+    const payload = {
       action: 'opname',
       kode: k,
-      qty: q,
+      qty: qStr,
       user: username || 'WhatsApp Operator'
-    }, {
+    };
+    if (b64) {
+      payload.imageBase64 = b64;
+    }
+
+    const res = await httpClient.post(APPS_SCRIPT_URL, payload, {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      timeout: 10000
+      timeout: 25000 // Allow extra time for image upload to Google Drive
     });
 
     if (res.data && res.data.success) {
       // Update local cache if available
       const localItem = cachedItems.find(it => it.kodeMaterial.toLowerCase() === k.toLowerCase());
-      if (localItem) localItem.qty = q;
+      if (localItem && res.data.newQty !== undefined) {
+        localItem.qty = res.data.newQty;
+      }
+      if (localItem && res.data.totalMasuk !== undefined) {
+        localItem.masuk = res.data.totalMasuk;
+      }
+      if (localItem && res.data.totalKeluar !== undefined) {
+        localItem.keluar = res.data.totalKeluar;
+      }
+      if (localItem && res.data.imageUrl) {
+        localItem.imageUrl = res.data.imageUrl;
+      }
       return res.data;
     }
     return { success: false, error: (res.data && res.data.error) || 'Gagal memperbarui stok di Google Sheets.' };
@@ -563,5 +768,10 @@ module.exports = {
   addMaterial,
   fetchImageBuffer,
   extractDriveFileId,
-  resolveDrivePhoto
+  resolveDrivePhoto,
+  normalizePhone,
+  getUserByPhone,
+  addPhoneToUser,
+  removePhone,
+  refreshPhoneCache
 };

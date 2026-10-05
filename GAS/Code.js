@@ -14,6 +14,7 @@ function onOpen() {
     .addSeparator()
     .addItem('🧹 Rapikan Format Sheet (Fix Format)', 'fixFormat')
     .addItem('🔄 Sinkronisasi No & Link Foto', 'syncNoAndLinks')
+    .addItem('📋 Inisialisasi Sheet Log', 'setupLogSheetWrapper')
     .addItem('⚙️ Inisialisasi Sheet Pengguna (User)', 'setupUsersSheetWrapper')
     .addToUi();
 }
@@ -46,14 +47,71 @@ function setupUsersSheetWrapper() {
 }
 
 /**
- * Imports/copies all material items from external source spreadsheet into PictFinder
+ * Wrapper to initialize Log sheet from menu
+ */
+function setupLogSheetWrapper() {
+  const ss = getSpreadsheetInstance();
+  setupLogSheet(ss);
+  SpreadsheetApp.getUi().alert('Sukses', 'Sheet Log berhasil diinisialisasi!', SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * Appends an audit trail entry to the Log sheet
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss - Active spreadsheet instance
+ * @param {Object} entry - Audit log payload
+ */
+function appendLogEntry(ss, entry) {
+  try {
+    if (!ss) ss = getSpreadsheetInstance();
+    const logSheet = setupLogSheet(ss);
+    const now = new Date();
+    const timestampStr = Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss');
+
+    const nextRow = Math.max(logSheet.getLastRow() + 1, 2);
+    const rowVals = [
+      timestampStr,
+      entry.kode || '-',
+      entry.nama || '-',
+      entry.rak || '-',
+      entry.tipe || 'OPNAME',
+      entry.jumlah !== undefined && entry.jumlah !== null ? Number(entry.jumlah) : 0,
+      entry.oldQty !== undefined && entry.oldQty !== null ? Number(entry.oldQty) : 0,
+      entry.newQty !== undefined && entry.newQty !== null ? Number(entry.newQty) : 0,
+      entry.uom || 'PCS',
+      entry.user || 'System'
+    ];
+
+    logSheet.getRange(nextRow, 1, 1, 10).setValues([rowVals]);
+
+    // Format new row
+    logSheet.getRange(nextRow, 1).setHorizontalAlignment('center');
+    logSheet.getRange(nextRow, 2).setHorizontalAlignment('center').setFontWeight('bold');
+    logSheet.getRange(nextRow, 3).setHorizontalAlignment('left');
+    logSheet.getRange(nextRow, 4).setHorizontalAlignment('center');
+    logSheet.getRange(nextRow, 5).setHorizontalAlignment('center').setFontWeight('bold');
+    if (entry.tipe === 'MASUK') {
+      logSheet.getRange(nextRow, 5).setFontColor('#2E7D32');
+    } else if (entry.tipe === 'KELUAR') {
+      logSheet.getRange(nextRow, 5).setFontColor('#C62828');
+    }
+    logSheet.getRange(nextRow, 6, 1, 3).setHorizontalAlignment('right').setNumberFormat('#,##0');
+    logSheet.getRange(nextRow, 9).setHorizontalAlignment('center');
+    logSheet.getRange(nextRow, 10).setHorizontalAlignment('left');
+    logSheet.setRowHeight(nextRow, 24);
+  } catch (err) {
+    Logger.log('appendLogEntry error: ' + err.message);
+  }
+}
+
+/**
+ * Imports/copies all material items from external source spreadsheet into Opname
  */
 function importFromSourceSheet() {
   const ui = SpreadsheetApp.getUi();
   const confirm = ui.alert(
     'Konfirmasi Salin Data',
     'Apakah Anda ingin menyalin seluruh data material dari sheet sumber (64 item)?\n\n' +
-    'Sheet Target: "PictFinder"\n' +
+    'Sheet Target: "' + CONFIG.SHEET_OPNAME + '"\n' +
     'Sheet Sumber: https://docs.google.com/spreadsheets/d/1SyeWtAjKAFyDs8oDVxKhiQluF45JjB_Se79PjmfrQxQ',
     ui.ButtonSet.OK_CANCEL
   );
@@ -62,9 +120,9 @@ function importFromSourceSheet() {
 
   try {
     const ss = getSpreadsheetInstance();
-    const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+    const sheet = getMasterSheet(ss);
     if (!sheet) {
-      ui.alert('Error', 'Sheet "' + CONFIG.SHEET_PICTFINDER + '" tidak ditemukan.', ui.ButtonSet.OK);
+      ui.alert('Error', 'Sheet "' + CONFIG.SHEET_OPNAME + '" tidak ditemukan.', ui.ButtonSet.OK);
       return;
     }
 
@@ -105,7 +163,9 @@ function importFromSourceSheet() {
         lokasi,
         kode,
         nama,
-        qty ? (isNaN(Number(qty)) ? qty : Number(qty)) : '',
+        0, // Masuk (initial 0)
+        0, // Keluar (initial 0)
+        qty ? (isNaN(Number(qty)) ? qty : Number(qty)) : 0, // Qty
         uom,
         deskripsi,
         photo ? '=HYPERLINK("' + photo + '"; "Link")' : ''
@@ -114,19 +174,20 @@ function importFromSourceSheet() {
 
     // Clear old data rows if any
     const lastRow = sheet.getLastRow();
+    const totalCols = CONFIG.TOTAL_COLS || 10;
     if (lastRow >= CONFIG.DATA_START_ROW) {
-      sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, 8).clearContent();
+      sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, totalCols).clearContent();
     }
 
-    // Write all 64 items
-    sheet.getRange(CONFIG.DATA_START_ROW, 1, rowsToInsert.length, 8).setValues(rowsToInsert);
+    // Write all items
+    sheet.getRange(CONFIG.DATA_START_ROW, 1, rowsToInsert.length, totalCols).setValues(rowsToInsert);
 
     // Standardize formatting and sequential styling
     fixFormat();
 
     ui.alert(
       'Impor Sukses! 🎉',
-      'Berhasil menyalin ' + rowsToInsert.length + ' item material ke sheet "' + CONFIG.SHEET_PICTFINDER + '".',
+      'Berhasil menyalin ' + rowsToInsert.length + ' item material ke sheet "' + sheet.getName() + '".',
       ui.ButtonSet.OK
     );
   } catch (err) {
@@ -173,12 +234,43 @@ function handleApiRequest(e) {
       return jsonResponse(result);
     }
 
+    if (action === 'get_user_by_phone') {
+      const result = UserService.getUserByPhone(params.phone || params.phoneNumber || params.number);
+      return jsonResponse(result);
+    }
+
+    if (action === 'get_all_phone_users') {
+      const result = UserService.getAllPhoneMappings();
+      return jsonResponse(result);
+    }
+
+    if (action === 'add_phone') {
+      const result = UserService.addPhoneNumber(params.username, params.phone || params.phoneNumber || params.number);
+      return jsonResponse(result);
+    }
+
+    if (action === 'remove_phone') {
+      const result = UserService.removePhoneNumber(params.phone || params.phoneNumber || params.number);
+      return jsonResponse(result);
+    }
+
+    if (action === 'setup_user_sheet') {
+      UserService.setupUsersSheet();
+      return jsonResponse({ success: true, message: 'Sheet User berhasil disinkronisasi.' });
+    }
+
+    if (action === 'setup_log_sheet') {
+      const ss = getSpreadsheetInstance();
+      setupLogSheet(ss);
+      return jsonResponse({ success: true, message: 'Sheet Log berhasil diinisialisasi.' });
+    }
+
     if (action === 'search') {
       const q = String(params.q || params.query || '').trim().toLowerCase();
       const ss = getSpreadsheetInstance();
-      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const sheet = getMasterSheet(ss);
       if (!sheet) {
-        return jsonResponse({ success: false, error: 'Sheet PictFinder tidak ditemukan.' });
+        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
       }
       const lastRow = sheet.getLastRow();
       if (lastRow < CONFIG.DATA_START_ROW) {
@@ -186,7 +278,8 @@ function handleApiRequest(e) {
       }
 
       const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+      const totalCols = CONFIG.TOTAL_COLS || 10;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
       const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
       const items = [];
 
@@ -195,12 +288,14 @@ function handleApiRequest(e) {
         const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
         const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
         const rak = String(row[CONFIG.COL.LOKASI_RAK - 1] || '').trim();
+        const masuk = Number(row[CONFIG.COL.MASUK - 1]) || 0;
+        const keluar = Number(row[CONFIG.COL.KELUAR - 1]) || 0;
         const qty = row[CONFIG.COL.QTY - 1];
         const uom = String(row[CONFIG.COL.UOM - 1] || '').trim();
         const deskripsi = String(row[CONFIG.COL.DESKRIPSI - 1] || '').trim();
         const rawLink = String(row[CONFIG.COL.LINK_FOTO - 1] || formulas[i][0] || '').trim();
 
-        const hasContent = row.slice(1, 7).some(function(v) {
+        const hasContent = row.slice(1, totalCols - 1).some(function(v) {
           return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
         });
         if (!hasContent && !kode) continue;
@@ -227,6 +322,8 @@ function handleApiRequest(e) {
             lokasiRak: rak || '-',
             kodeMaterial: kode,
             namaBarang: nama,
+            masuk: masuk,
+            keluar: keluar,
             qty: (qty !== '' && qty !== null && !isNaN(qty)) ? Number(qty) : 0,
             uom: uom || 'PCS',
             deskripsi: deskripsi || '-',
@@ -252,14 +349,18 @@ function handleApiRequest(e) {
         return jsonResponse({ success: false, error: 'Kode material diperlukan.' });
       }
       const ss = getSpreadsheetInstance();
-      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const sheet = getMasterSheet(ss);
+      if (!sheet) {
+        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
+      }
       const lastRow = sheet.getLastRow();
       if (lastRow < CONFIG.DATA_START_ROW) {
         return jsonResponse({ success: false, error: 'Data material kosong.' });
       }
 
       const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+      const totalCols = CONFIG.TOTAL_COLS || 10;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
       const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
 
       for (let i = 0; i < values.length; i++) {
@@ -277,6 +378,8 @@ function handleApiRequest(e) {
               lokasiRak: String(row[CONFIG.COL.LOKASI_RAK - 1] || '-').trim(),
               kodeMaterial: kode,
               namaBarang: String(row[CONFIG.COL.NAMA_BARANG - 1] || '-').trim(),
+              masuk: Number(row[CONFIG.COL.MASUK - 1]) || 0,
+              keluar: Number(row[CONFIG.COL.KELUAR - 1]) || 0,
               qty: Number(row[CONFIG.COL.QTY - 1]) || 0,
               uom: String(row[CONFIG.COL.UOM - 1] || 'PCS').trim(),
               deskripsi: String(row[CONFIG.COL.DESKRIPSI - 1] || '-').trim(),
@@ -292,44 +395,191 @@ function handleApiRequest(e) {
 
     if (action === 'opname') {
       const code = String(params.kode || params.code || '').trim().toLowerCase();
-      const newQty = Number(params.qty);
       const user = String(params.user || params.username || 'WhatsApp User').trim();
+      const rawQty = params.qty !== undefined && params.qty !== null ? String(params.qty).trim() : null;
+      const b64 = extractBase64(params.imageBase64 || params.foto || params.foto1);
 
       if (!code) {
         return jsonResponse({ success: false, error: 'Kode material diperlukan.' });
       }
-      if (isNaN(newQty) || newQty < 0) {
-        return jsonResponse({ success: false, error: 'Qty fisik harus berupa angka positif.' });
+
+      if (rawQty === null && !b64) {
+        return jsonResponse({ success: false, error: 'Jumlah stok (qty) atau foto material wajib disertakan.' });
       }
 
       const ss = getSpreadsheetInstance();
-      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const sheet = getMasterSheet(ss);
+      if (!sheet) {
+        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
+      }
       const lastRow = sheet.getLastRow();
       if (lastRow < CONFIG.DATA_START_ROW) {
         return jsonResponse({ success: false, error: 'Data material kosong.' });
       }
 
       const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-      const values = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.KODE_MATERIAL, numRows, 1).getValues();
+      const totalCols = CONFIG.TOTAL_COLS || 10;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
+      const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
 
       for (let i = 0; i < values.length; i++) {
-        const k = String(values[i][0] || '').trim();
-        if (k.toLowerCase() === code) {
-          const targetRow = CONFIG.DATA_START_ROW + i;
-          const oldQty = sheet.getRange(targetRow, CONFIG.COL.QTY).getValue();
-          sheet.getRange(targetRow, CONFIG.COL.QTY).setValue(newQty);
+        const row = values[i];
+        const k = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
+        const noVal = String(row[CONFIG.COL.NO - 1] || (i + 1)).trim();
 
-          const nama = sheet.getRange(targetRow, CONFIG.COL.NAMA_BARANG).getValue();
-          const rak = sheet.getRange(targetRow, CONFIG.COL.LOKASI_RAK).getValue();
-          const uom = sheet.getRange(targetRow, CONFIG.COL.UOM).getValue();
+        const matchesCode = k.toLowerCase() === code;
+        const matchesItemNo = code === ('item-' + noVal).toLowerCase() || code === ('item' + noVal).toLowerCase();
+
+        if (matchesCode || matchesItemNo) {
+          const targetRow = CONFIG.DATA_START_ROW + i;
+          const oldQty = Number(row[CONFIG.COL.QTY - 1]) || 0;
+          const currentMasuk = Number(row[CONFIG.COL.MASUK - 1]) || 0;
+          const currentKeluar = Number(row[CONFIG.COL.KELUAR - 1]) || 0;
+
+          let newQty = oldQty;
+          let delta = 0;
+          let isDelta = false;
+          let clamped = false;
+          let isPhotoOnly = false;
+          let tipe = 'TETAP';
+          let changeAmount = 0;
+          let newMasuk = currentMasuk;
+          let newKeluar = currentKeluar;
+
+          if (rawQty === null || rawQty === '') {
+            // Photo-only update
+            isPhotoOnly = true;
+            tipe = 'FOTO_UPDATE';
+          } else if (rawQty.startsWith('+') || rawQty.startsWith('-')) {
+            isDelta = true;
+            delta = Number(rawQty);
+            if (isNaN(delta)) {
+              return jsonResponse({ success: false, error: 'Format penambahan/pengurangan stok tidak valid: ' + rawQty });
+            }
+            newQty = oldQty + delta;
+            if (newQty < 0) {
+              newQty = 0;
+              clamped = true;
+            }
+            delta = newQty - oldQty;
+          } else {
+            // Absolute quantity set
+            newQty = Number(rawQty);
+            if (isNaN(newQty) || newQty < 0) {
+              return jsonResponse({ success: false, error: 'Jumlah stok fisik harus berupa angka valid (>= 0).' });
+            }
+            delta = newQty - oldQty;
+          }
+
+          const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '-').trim();
+          const rak = String(row[CONFIG.COL.LOKASI_RAK - 1] || '-').trim();
+          const uom = String(row[CONFIG.COL.UOM - 1] || 'PCS').trim();
+
+          // Update Qty and accumulate Masuk/Keluar if not photo-only
+          if (!isPhotoOnly) {
+            sheet.getRange(targetRow, CONFIG.COL.QTY).setValue(newQty);
+
+            if (delta > 0) {
+              tipe = 'MASUK';
+              changeAmount = delta;
+              newMasuk = currentMasuk + delta;
+              sheet.getRange(targetRow, CONFIG.COL.MASUK).setValue(newMasuk);
+              appendLogEntry(ss, {
+                kode: k,
+                nama: nama,
+                rak: rak,
+                tipe: 'MASUK',
+                jumlah: delta,
+                oldQty: oldQty,
+                newQty: newQty,
+                uom: uom,
+                user: user
+              });
+            } else if (delta < 0) {
+              tipe = 'KELUAR';
+              changeAmount = Math.abs(delta);
+              newKeluar = currentKeluar + changeAmount;
+              sheet.getRange(targetRow, CONFIG.COL.KELUAR).setValue(newKeluar);
+              appendLogEntry(ss, {
+                kode: k,
+                nama: nama,
+                rak: rak,
+                tipe: 'KELUAR',
+                jumlah: changeAmount,
+                oldQty: oldQty,
+                newQty: newQty,
+                uom: uom,
+                user: user
+              });
+            }
+          }
+
+          // Handle photo upload if provided
+          let photoUpdated = false;
+          let photoUrl = '';
+          let photoSlot = 1;
+          let finalFormulaOrLink = '';
+
+          if (b64) {
+            const oldFormula = formulas[i][0] || '';
+            const oldLinkVal = String(row[CONFIG.COL.LINK_FOTO - 1] || '').trim();
+            const existingLinks = extractHyperlinks(oldFormula || oldLinkVal);
+
+            if (existingLinks.length === 0) {
+              photoSlot = 1;
+              photoUrl = saveBase64ImageToDrive(b64, k + '_foto1');
+              if (photoUrl) {
+                finalFormulaOrLink = '=HYPERLINK("' + photoUrl + '"; "Foto 1")';
+                photoUpdated = true;
+              }
+            } else if (existingLinks.length === 1) {
+              photoSlot = 2;
+              photoUrl = saveBase64ImageToDrive(b64, k + '_foto2');
+              if (photoUrl) {
+                finalFormulaOrLink = '=HYPERLINK("' + existingLinks[0] + '"; "Foto 1") & ", " & HYPERLINK("' + photoUrl + '"; "Foto 2")';
+                photoUpdated = true;
+              }
+            } else {
+              photoSlot = 2;
+              photoUrl = saveBase64ImageToDrive(b64, k + '_foto2');
+              if (photoUrl) {
+                finalFormulaOrLink = '=HYPERLINK("' + existingLinks[0] + '"; "Foto 1") & ", " & HYPERLINK("' + photoUrl + '"; "Foto 2")';
+                photoUpdated = true;
+              }
+            }
+
+            if (photoUpdated && finalFormulaOrLink) {
+              const fotoCell = sheet.getRange(targetRow, CONFIG.COL.LINK_FOTO);
+              if (finalFormulaOrLink.startsWith('=')) {
+                fotoCell.setFormula(finalFormulaOrLink);
+              } else {
+                fotoCell.setValue(finalFormulaOrLink);
+              }
+            }
+          }
+
+          const fileId = photoUrl ? extractDriveFileId(photoUrl) : extractDriveFileId(row[CONFIG.COL.LINK_FOTO - 1] || formulas[i][0]);
 
           return jsonResponse({
             success: true,
             kodeMaterial: k,
             namaBarang: nama,
             lokasiRak: rak,
+            tipe: tipe,
+            jumlah: changeAmount,
+            totalMasuk: newMasuk,
+            totalKeluar: newKeluar,
             oldQty: oldQty,
             newQty: newQty,
+            delta: delta,
+            isDelta: isDelta,
+            clamped: clamped,
+            isPhotoOnly: isPhotoOnly,
+            photoUpdated: photoUpdated,
+            photoSlot: photoSlot,
+            photoUrl: photoUrl,
+            fileId: fileId,
+            imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : '',
             uom: uom,
             updatedBy: user,
             timestamp: new Date().toISOString()
@@ -341,9 +591,9 @@ function handleApiRequest(e) {
 
     if (action === 'inventory' || action === 'getinventory') {
       const ss = getSpreadsheetInstance();
-      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const sheet = getMasterSheet(ss);
       if (!sheet) {
-        return jsonResponse({ success: false, error: 'Sheet PictFinder tidak ditemukan.' });
+        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
       }
       const lastRow = sheet.getLastRow();
       if (lastRow < CONFIG.DATA_START_ROW) {
@@ -351,7 +601,8 @@ function handleApiRequest(e) {
       }
 
       const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+      const totalCols = CONFIG.TOTAL_COLS || 10;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
       const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
       const items = [];
 
@@ -360,12 +611,14 @@ function handleApiRequest(e) {
         const kode = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
         const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '').trim();
         const rak = String(row[CONFIG.COL.LOKASI_RAK - 1] || '').trim();
+        const masuk = Number(row[CONFIG.COL.MASUK - 1]) || 0;
+        const keluar = Number(row[CONFIG.COL.KELUAR - 1]) || 0;
         const qty = row[CONFIG.COL.QTY - 1];
         const uom = String(row[CONFIG.COL.UOM - 1] || '').trim();
         const deskripsi = String(row[CONFIG.COL.DESKRIPSI - 1] || '').trim();
         const rawLink = String(row[CONFIG.COL.LINK_FOTO - 1] || formulas[i][0] || '').trim();
 
-        const hasContent = row.slice(1, 7).some(function(v) {
+        const hasContent = row.slice(1, totalCols - 1).some(function(v) {
           return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
         });
         if (!hasContent && !kode) continue;
@@ -376,6 +629,8 @@ function handleApiRequest(e) {
           'Lokasi Rak': rak || '-',
           'Kode Material': kode,
           'Nama Barang': nama,
+          'Masuk': masuk,
+          'Keluar': keluar,
           'Qty': (qty !== '' && qty !== null && !isNaN(qty)) ? Number(qty) : 0,
           'UoM': uom || 'PCS',
           'Deskripsi': deskripsi || '-',
@@ -384,6 +639,8 @@ function handleApiRequest(e) {
           lokasiRak: rak || '-',
           kodeMaterial: kode,
           namaBarang: nama,
+          masuk: masuk,
+          keluar: keluar,
           qty: (qty !== '' && qty !== null && !isNaN(qty)) ? Number(qty) : 0,
           uom: uom || 'PCS',
           deskripsi: deskripsi || '-',
@@ -414,7 +671,10 @@ function handleApiRequest(e) {
       }
 
       const ss = getSpreadsheetInstance();
-      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const sheet = getMasterSheet(ss);
+      if (!sheet) {
+        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
+      }
       const lastRow = sheet.getLastRow();
 
       // Check if code already exists
@@ -459,16 +719,32 @@ function handleApiRequest(e) {
         }
       }
 
-      sheet.getRange(targetRow, 1, 1, 8).setValues([[
+      const totalCols = CONFIG.TOTAL_COLS || 10;
+      sheet.getRange(targetRow, 1, 1, totalCols).setValues([[
         nextNo,
         rak || '-',
         kode,
         nama,
-        qty,
+        qty, // Initial Masuk
+        0,   // Initial Keluar
+        qty, // Qty
         uom,
         deskripsi,
         linkFormula || '-'
       ]]);
+
+      // Record to Log sheet
+      appendLogEntry(ss, {
+        kode: kode,
+        nama: nama,
+        rak: rak,
+        tipe: 'MASUK',
+        jumlah: qty,
+        oldQty: 0,
+        newQty: qty,
+        uom: uom,
+        user: user
+      });
 
       fixFormat();
 
@@ -481,6 +757,8 @@ function handleApiRequest(e) {
           lokasiRak: rak || '-',
           kodeMaterial: kode,
           namaBarang: nama,
+          masuk: qty,
+          keluar: 0,
           qty: qty,
           uom: uom,
           deskripsi: deskripsi,
@@ -508,9 +786,9 @@ function handleApiRequest(e) {
       }
 
       const ss = getSpreadsheetInstance();
-      const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+      const sheet = getMasterSheet(ss);
       if (!sheet) {
-        return jsonResponse({ success: false, error: 'Sheet PictFinder tidak ditemukan.' });
+        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
       }
 
       const lastRow = sheet.getLastRow();
@@ -519,7 +797,8 @@ function handleApiRequest(e) {
       }
 
       const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+      const totalCols = CONFIG.TOTAL_COLS || 10;
+      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
       const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
 
       // 1. Locate target row
@@ -605,13 +884,52 @@ function handleApiRequest(e) {
       }
 
       // 4. Update row values in sheet
-      const targetQty = isNaN(newQty) ? (Number(oldRowData[CONFIG.COL.QTY - 1]) || 0) : newQty;
+      const oldQty = Number(oldRowData[CONFIG.COL.QTY - 1]) || 0;
+      const targetQty = isNaN(newQty) ? oldQty : newQty;
+      const currentMasuk = Number(oldRowData[CONFIG.COL.MASUK - 1]) || 0;
+      const currentKeluar = Number(oldRowData[CONFIG.COL.KELUAR - 1]) || 0;
+
       sheet.getRange(targetRowIndex, CONFIG.COL.LOKASI_RAK).setValue(newRak || '-');
       sheet.getRange(targetRowIndex, CONFIG.COL.KODE_MATERIAL).setValue(newKode);
       sheet.getRange(targetRowIndex, CONFIG.COL.NAMA_BARANG).setValue(newNama);
       sheet.getRange(targetRowIndex, CONFIG.COL.QTY).setValue(targetQty);
       sheet.getRange(targetRowIndex, CONFIG.COL.UOM).setValue(newUom || 'PCS');
       sheet.getRange(targetRowIndex, CONFIG.COL.DESKRIPSI).setValue(newDesk || '-');
+
+      // If Qty changed in update, accumulate and log
+      if (targetQty !== oldQty) {
+        const delta = targetQty - oldQty;
+        if (delta > 0) {
+          const newMasuk = currentMasuk + delta;
+          sheet.getRange(targetRowIndex, CONFIG.COL.MASUK).setValue(newMasuk);
+          appendLogEntry(ss, {
+            kode: newKode,
+            nama: newNama,
+            rak: newRak || '-',
+            tipe: 'MASUK',
+            jumlah: delta,
+            oldQty: oldQty,
+            newQty: targetQty,
+            uom: newUom || 'PCS',
+            user: user
+          });
+        } else {
+          const qtyKeluar = Math.abs(delta);
+          const newKeluar = currentKeluar + qtyKeluar;
+          sheet.getRange(targetRowIndex, CONFIG.COL.KELUAR).setValue(newKeluar);
+          appendLogEntry(ss, {
+            kode: newKode,
+            nama: newNama,
+            rak: newRak || '-',
+            tipe: 'KELUAR',
+            jumlah: qtyKeluar,
+            oldQty: oldQty,
+            newQty: targetQty,
+            uom: newUom || 'PCS',
+            user: user
+          });
+        }
+      }
 
       const fotoCell = sheet.getRange(targetRowIndex, CONFIG.COL.LINK_FOTO);
       if (finalFormulaOrLink.startsWith('=')) {
@@ -787,7 +1105,7 @@ function getPrintModalInitialData() {
   let activeRow = -1;
   let activeNo = 1;
 
-  if (activeSheet && activeSheet.getName() === CONFIG.SHEET_PICTFINDER) {
+  if (activeSheet && (activeSheet.getName() === CONFIG.SHEET_OPNAME || activeSheet.getName() === 'PictFinder')) {
     const curRow = activeSheet.getActiveCell().getRow();
     if (curRow >= CONFIG.DATA_START_ROW) {
       activeRow = curRow;

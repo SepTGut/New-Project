@@ -14,8 +14,66 @@ const QRCode = require('qrcode');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
+const http = require('http');
 const { handleMessage } = require('./handlers/messageHandler');
 const logger = require('./logger');
+
+// Admin WhatsApp JID to notify when server starts (set ADMIN_NOTIFY_NUMBER=628xxx in .env)
+const ADMIN_NOTIFY_NUMBER = process.env.ADMIN_NOTIFY_NUMBER || '';
+
+/**
+ * Fetches the live Cloudflare Quick Tunnel URL from the metrics endpoint.
+ * Returns the full https URL or null if not available.
+ */
+async function getQuickTunnelUrl(retries = 5, delayMs = 6000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await axios.get('http://cloudflared:2000/quicktunnel', {
+        httpAgent: new http.Agent({ family: 4 }),
+        timeout: 4000
+      });
+      if (res.data && res.data.hostname) {
+        return `https://${res.data.hostname}`;
+      }
+    } catch (e) {}
+    if (i < retries - 1) await new Promise(r => setTimeout(r, delayMs));
+  }
+  return null;
+}
+
+/**
+ * Sends the tunnel URL to the admin number after bot connects + tunnel starts
+ */
+async function notifyAdminOnStartup(sock) {
+  const adminNum = String(ADMIN_NOTIFY_NUMBER || '').trim().replace(/[^\d]/g, '');
+  if (!adminNum) return; // No admin configured
+
+  const adminJid = adminNum.endsWith('@s.whatsapp.net') ? adminNum : `${adminNum}@s.whatsapp.net`;
+
+  // Wait a bit for cloudflared to fully initialize
+  await new Promise(r => setTimeout(r, 15000));
+
+  const tunnelUrl = await getQuickTunnelUrl();
+  const botPhone = botState.connectedUser?.id ? botState.connectedUser.id.split(':')[0] : '-';
+
+  const msgText = tunnelUrl
+    ? `🚀 *Server Gudang Online!*\n\n` +
+      `🌐 *Link Akses Web (Internet):*\n${tunnelUrl}\n\n` +
+      `📱 *Bot aktif sebagai:* +${botPhone}\n` +
+      `⚠️ _URL berubah setiap kali server di-restart._\n` +
+      `_Gunakan \`!link\` kapan saja untuk melihat URL terkini._`
+    : `🚀 *Server Gudang Online!*\n\n` +
+      `📱 *Bot aktif sebagai:* +${botPhone}\n` +
+      `⚠️ _Tunnel URL belum tersedia. Ketik \`!link\` setelah 30 detik._`;
+
+  try {
+    await sock.sendMessage(adminJid, { text: msgText });
+    logger.info('STARTUP', `Notifikasi startup dikirim ke admin +${adminNum}${tunnelUrl ? ': ' + tunnelUrl : ' (tunnel belum siap)'}`);
+  } catch (e) {
+    logger.warn('STARTUP', `Gagal mengirim notifikasi startup ke +${adminNum}: ${e.message}`);
+  }
+}
 
 const AUTH_FOLDER = process.env.AUTH_FOLDER || path.join(__dirname, '../auth_info_baileys');
 
@@ -109,8 +167,16 @@ async function startBot() {
         botState.qrRaw = '';
         botState.qrDataUrl = '';
         botState.connectedUser = sock.user;
-        const phoneNum = sock.user?.id ? sock.user.id.split(':')[0] : 'Unknown';
+        // sock.user.id may return LID (internal WA id) instead of actual phone number.
+        // The real phone JID always contains '@s.whatsapp.net', LID contains '@lid'.
+        const rawId = sock.user?.id || '';
+        const phoneNum = rawId.includes('@s.whatsapp.net')
+          ? rawId.split(':')[0]
+          : (sock.user?.lid ? '' : rawId.split(':')[0]) || 'Unknown';
         logger.info('AUTH', `WhatsApp Bot TERHUBUNG sebagai +${phoneNum}!`, { nama: sock.user?.name || '-' });
+
+        // Notify admin with the tunnel URL after startup (non-blocking)
+        notifyAdminOnStartup(sock).catch(() => {});
       }
     });
 

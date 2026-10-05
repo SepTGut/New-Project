@@ -17,14 +17,14 @@ function getSpreadsheetInstance() {
 
 function fixFormat() {
   const ss = getSpreadsheetInstance();
-  const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+  const sheet = getMasterSheet(ss);
   if (!sheet) {
-    try { ss.toast('Sheet ' + CONFIG.SHEET_PICTFINDER + ' tidak ditemukan.', 'Error', 5); } catch (e) { }
+    try { ss.toast('Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.', 'Error', 5); } catch (e) { }
     return;
   }
 
   const lastRow = Math.max(sheet.getLastRow(), CONFIG.DATA_START_ROW);
-  const totalCols = 8;
+  const totalCols = CONFIG.TOTAL_COLS || 10;
 
   // 1. Title Banner (Row 1 to 3)
   try {
@@ -48,8 +48,8 @@ function fixFormat() {
     Logger.log('Title banner format notice: ' + err.message);
   }
 
-  // 2. Header Row (Row 5) - Enforce and restore all column names
-  const headers = ['No', 'Lokasi Rak', 'Kode Material', 'Nama Barang', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
+  // 2. Header Row (Row 5) - Enforce and restore all 10 column names
+  const headers = ['No', 'Lokasi Rak', 'Kode Material', 'Nama Barang', 'Masuk', 'Keluar', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
   const headerRange = sheet.getRange(CONFIG.HEADER_ROW, 1, 1, totalCols);
   headerRange.setValues([headers]);
   headerRange.setBackground('#1A237E')
@@ -87,8 +87,8 @@ function fixFormat() {
       sheet.getRange(rowIdx, 1, 1, totalCols).setBackground(bgColor);
       sheet.setRowHeight(rowIdx, 26);
 
-      // Check if row has any content in columns 2 to 8
-      const hasContent = rowVals.slice(1, 8).some(function (v) {
+      // Check if row has any content in columns 2 to totalCols
+      const hasContent = rowVals.slice(1, totalCols).some(function (v) {
         return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
       });
 
@@ -118,23 +118,27 @@ function fixFormat() {
     sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LOKASI_RAK, numRows, 1).setHorizontalAlignment('center');
     sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.KODE_MATERIAL, numRows, 1).setHorizontalAlignment('center').setFontWeight('bold');
     sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.NAMA_BARANG, numRows, 1).setHorizontalAlignment('left');
+    sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.MASUK, numRows, 1).setHorizontalAlignment('right').setNumberFormat('#,##0');
+    sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.KELUAR, numRows, 1).setHorizontalAlignment('right').setNumberFormat('#,##0');
     sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.QTY, numRows, 1).setHorizontalAlignment('right').setNumberFormat('#,##0');
     sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.UOM, numRows, 1).setHorizontalAlignment('center');
     sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.DESKRIPSI, numRows, 1).setHorizontalAlignment('left').setWrap(true);
     sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).setHorizontalAlignment('center');
   }
 
-  // 4. Standard Column Widths
+  // 4. Standard Column Widths (10 Columns)
   sheet.setColumnWidth(CONFIG.COL.NO, 50);
   sheet.setColumnWidth(CONFIG.COL.LOKASI_RAK, 120);
   sheet.setColumnWidth(CONFIG.COL.KODE_MATERIAL, 140);
   sheet.setColumnWidth(CONFIG.COL.NAMA_BARANG, 260);
-  sheet.setColumnWidth(CONFIG.COL.QTY, 70);
+  sheet.setColumnWidth(CONFIG.COL.MASUK, 80);
+  sheet.setColumnWidth(CONFIG.COL.KELUAR, 80);
+  sheet.setColumnWidth(CONFIG.COL.QTY, 80);
   sheet.setColumnWidth(CONFIG.COL.UOM, 75);
   sheet.setColumnWidth(CONFIG.COL.DESKRIPSI, 240);
   sheet.setColumnWidth(CONFIG.COL.LINK_FOTO, 100);
 
-  // 5. Also standardize User sheet headers and formatting
+  // 5. Also standardize User sheet
   try {
     if (typeof UserService !== 'undefined' && UserService.setupUsersSheet) {
       UserService.setupUsersSheet();
@@ -143,7 +147,65 @@ function fixFormat() {
     Logger.log('fixFormat User sheet notice: ' + ue.message);
   }
 
+  // 6. Also initialize and standardize Log sheet
   try {
-    ss.toast('Format sheet ' + CONFIG.SHEET_PICTFINDER + ' dan User berhasil distandarkan!', 'Sukses', 4);
+    setupLogSheet(ss);
+  } catch (le) {
+    Logger.log('setupLogSheet notice: ' + le.message);
+  }
+
+  try {
+    ss.toast('Format sheet ' + sheet.getName() + ', Log, dan User berhasil distandarkan!', 'Sukses', 4);
   } catch (e) { }
+}
+
+/**
+ * Ensures Log sheet exists and has standardized headers, typography, and frozen header row
+ */
+function setupLogSheet(ss) {
+  if (!ss) ss = getSpreadsheetInstance();
+  let logSheet = ss.getSheetByName(CONFIG.SHEET_LOG);
+  if (!logSheet) {
+    logSheet = ss.insertSheet(CONFIG.SHEET_LOG);
+  }
+
+  const logHeaders = [
+    'Timestamp',
+    'Kode Material',
+    'Nama Barang',
+    'Lokasi Rak',
+    'Tipe Transaksi',
+    'Jumlah',
+    'Stok Sebelum',
+    'Stok Sesudah',
+    'Satuan',
+    'Petugas'
+  ];
+
+  const headerRange = logSheet.getRange(1, 1, 1, logHeaders.length);
+  headerRange.setValues([logHeaders]);
+  headerRange.setBackground('#1A237E')
+    .setFontColor('#FFFFFF')
+    .setFontFamily('Arial')
+    .setFontSize(10)
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+    .setWrap(false);
+  logSheet.setRowHeight(1, 32);
+  logSheet.setFrozenRows(1);
+
+  // Standard column widths for Log sheet
+  logSheet.setColumnWidth(1, 160); // Timestamp
+  logSheet.setColumnWidth(2, 130); // Kode Material
+  logSheet.setColumnWidth(3, 240); // Nama Barang
+  logSheet.setColumnWidth(4, 100); // Lokasi Rak
+  logSheet.setColumnWidth(5, 130); // Tipe Transaksi
+  logSheet.setColumnWidth(6, 80);  // Jumlah
+  logSheet.setColumnWidth(7, 100); // Stok Sebelum
+  logSheet.setColumnWidth(8, 100); // Stok Sesudah
+  logSheet.setColumnWidth(9, 80);  // Satuan
+  logSheet.setColumnWidth(10, 150); // Petugas
+
+  return logSheet;
 }

@@ -10,9 +10,9 @@ function onEdit(e) {
     const sheet = e.range.getSheet();
     const sheetName = sheet.getName();
 
-    // Route 1: Edits on PictFinder
-    if (sheetName === CONFIG.SHEET_PICTFINDER) {
-      handlePictFinderEdit(e, sheet);
+    // Route 1: Edits on Opname (or legacy PictFinder)
+    if (sheetName === CONFIG.SHEET_OPNAME || sheetName === 'PictFinder') {
+      handleOpnameEdit(e, sheet);
       return;
     }
 
@@ -27,10 +27,10 @@ function onEdit(e) {
 }
 
 /**
- * Handles automated behavior on PictFinder sheet.
+ * Handles automated behavior on Opname sheet.
  * Fully supports multi-row pastes, drag-downs, and single-cell edits.
  */
-function handlePictFinderEdit(e, sheet) {
+function handleOpnameEdit(e, sheet) {
   try {
     const startRow = e.range.getRow();
     const numRows = e.range.getNumRows();
@@ -38,6 +38,7 @@ function handlePictFinderEdit(e, sheet) {
     const startCol = e.range.getColumn();
     const numCols = e.range.getNumColumns();
     const endCol = startCol + numCols - 1;
+    const totalCols = CONFIG.TOTAL_COLS || 10;
 
     if (endRow < CONFIG.DATA_START_ROW) return;
 
@@ -47,11 +48,11 @@ function handlePictFinderEdit(e, sheet) {
     const maxScanRow = Math.max(sheet.getLastRow(), endRow);
     if (maxScanRow >= CONFIG.DATA_START_ROW) {
       const numScan = maxScanRow - CONFIG.DATA_START_ROW + 1;
-      const allVals = sheet.getRange(CONFIG.DATA_START_ROW, 1, numScan, 8).getValues();
+      const allVals = sheet.getRange(CONFIG.DATA_START_ROW, 1, numScan, totalCols).getValues();
       for (let i = 0; i < numScan; i++) {
         const rIdx = CONFIG.DATA_START_ROW + i;
         const rVals = allVals[i];
-        const hasContent = rVals.slice(1, 8).some(function(v) {
+        const hasContent = rVals.slice(1, totalCols).some(function(v) {
           return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
         });
         if (hasContent) {
@@ -102,9 +103,63 @@ function handlePictFinderEdit(e, sheet) {
         }
       }
     }
+
+    // 4. Manual Edit Safeguard: If Qty column is edited directly in spreadsheet, log and accumulate
+    if (startCol <= CONFIG.COL.QTY && endCol >= CONFIG.COL.QTY && numRows === 1 && numCols === 1) {
+      const editRow = effectiveStart;
+      const oldVal = e.oldValue !== undefined ? Number(e.oldValue) : null;
+      const newVal = e.value !== undefined ? Number(e.value) : Number(sheet.getRange(editRow, CONFIG.COL.QTY).getValue());
+
+      if (oldVal !== null && !isNaN(oldVal) && !isNaN(newVal) && oldVal !== newVal) {
+        const rowData = sheet.getRange(editRow, 1, 1, totalCols).getValues()[0];
+        const kode = String(rowData[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
+        const nama = String(rowData[CONFIG.COL.NAMA_BARANG - 1] || '-').trim();
+        const rak = String(rowData[CONFIG.COL.LOKASI_RAK - 1] || '-').trim();
+        const uom = String(rowData[CONFIG.COL.UOM - 1] || 'PCS').trim();
+        const curMasuk = Number(rowData[CONFIG.COL.MASUK - 1]) || 0;
+        const curKeluar = Number(rowData[CONFIG.COL.KELUAR - 1]) || 0;
+
+        const delta = newVal - oldVal;
+        const ss = sheet.getParent();
+
+        if (delta > 0) {
+          sheet.getRange(editRow, CONFIG.COL.MASUK).setValue(curMasuk + delta);
+          appendLogEntry(ss, {
+            kode: kode,
+            nama: nama,
+            rak: rak,
+            tipe: 'MASUK',
+            jumlah: delta,
+            oldQty: oldVal,
+            newQty: newVal,
+            uom: uom,
+            user: 'Manual Edit (Spreadsheet)'
+          });
+        } else if (delta < 0) {
+          const qtyKeluar = Math.abs(delta);
+          sheet.getRange(editRow, CONFIG.COL.KELUAR).setValue(curKeluar + qtyKeluar);
+          appendLogEntry(ss, {
+            kode: kode,
+            nama: nama,
+            rak: rak,
+            tipe: 'KELUAR',
+            jumlah: qtyKeluar,
+            oldQty: oldVal,
+            newQty: newVal,
+            uom: uom,
+            user: 'Manual Edit (Spreadsheet)'
+          });
+        }
+      }
+    }
   } catch (err) {
-    Logger.log('handlePictFinderEdit error: ' + err.message);
+    Logger.log('handleOpnameEdit error: ' + err.message);
   }
+}
+
+// Backward compatibility alias
+function handlePictFinderEdit(e, sheet) {
+  handleOpnameEdit(e, sheet);
 }
 
 /**
@@ -132,7 +187,8 @@ function handleUserEdit(e, sheet) {
       // Auto-generate / update QR code formula using JavaScript encodeURIComponent
       const qrPayload = JSON.stringify({ u: username, p: pass, role: role });
       const qrFormula = '=IMAGE("https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(qrPayload) + '")';
-      sheet.getRange(row, 8).setFormula(qrFormula);
+      const colMap = (typeof getUserSheetColMap === 'function') ? getUserSheetColMap(sheet) : { qrCol: 9 };
+      sheet.getRange(row, colMap.qrCol || 9).setFormula(qrFormula);
       sheet.setRowHeight(row, 65);
 
       // 3. Auto-hide IT / IIT account row
@@ -201,15 +257,17 @@ function findDriveImageUrlByCode(kodeMaterial) {
  */
 function syncNoAndLinks() {
   const ss = getSpreadsheetInstance();
-  const sheet = ss.getSheetByName(CONFIG.SHEET_PICTFINDER);
+  const sheet = getMasterSheet(ss);
   if (!sheet) {
-    try { ss.toast('Sheet ' + CONFIG.SHEET_PICTFINDER + ' tidak ditemukan.', 'Error', 5); } catch (e) {}
+    try { ss.toast('Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.', 'Error', 5); } catch (e) {}
     return;
   }
 
-  // 1. Enforce & restore full header row
-  const headers = ['No', 'Lokasi Rak', 'Kode Material', 'Nama Barang', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
-  sheet.getRange(CONFIG.HEADER_ROW, 1, 1, 8).setValues([headers]);
+  const totalCols = CONFIG.TOTAL_COLS || 10;
+
+  // 1. Enforce & restore full header row (10 Columns)
+  const headers = ['No', 'Lokasi Rak', 'Kode Material', 'Nama Barang', 'Masuk', 'Keluar', 'Qty', 'UoM', 'Deskripsi', 'Link Foto'];
+  sheet.getRange(CONFIG.HEADER_ROW, 1, 1, totalCols).setValues([headers]);
 
   const lastRow = sheet.getLastRow();
   if (lastRow < CONFIG.DATA_START_ROW) {
@@ -218,7 +276,7 @@ function syncNoAndLinks() {
   }
 
   const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-  const rangeData = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, 8).getValues();
+  const rangeData = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
   const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
 
   let updatedNoCount = 0;
@@ -228,7 +286,7 @@ function syncNoAndLinks() {
     const rowIdx = CONFIG.DATA_START_ROW + i;
     const rowVals = rangeData[i];
 
-    const hasContent = rowVals.slice(1, 8).some(function(v) {
+    const hasContent = rowVals.slice(1, totalCols).some(function(v) {
       return v !== '' && v !== null && v !== undefined && String(v).trim() !== '';
     });
 

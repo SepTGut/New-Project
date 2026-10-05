@@ -12,13 +12,29 @@
 
 param(
     [switch]$NoAuth,
-    [string]$Output = "smart-warehouse-bundle.zip"
+    [string]$Output = ""
 )
+
+if (-not $Output) {
+    if ($NoAuth) {
+        $Output = "releases\smart-warehouse-bundle.zip"
+    } else {
+        $Output = "releases\smart-warehouse-bundle-withauth.zip"
+    }
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $Root     = $PSScriptRoot
-$ZipPath  = Join-Path $Root $Output
+if ([System.IO.Path]::IsPathRooted($Output)) {
+    $ZipPath = $Output
+} else {
+    $ZipPath = Join-Path $Root $Output
+}
+$ZipDir   = Split-Path $ZipPath
+if ($ZipDir -and -not (Test-Path $ZipDir)) {
+    New-Item -ItemType Directory -Path $ZipDir -Force | Out-Null
+}
 $TempDir  = Join-Path $env:TEMP "smart-warehouse-bundle-temp"
 
 # --- Clean up any previous temp ---
@@ -47,8 +63,9 @@ $ExcludePatterns = @(
     'test-results',
     'scratch',
     'ServerWAbotPPO',
-    'smart-warehouse-bundle-withauth',
-    '*bundle-withauth*',
+    'releases',
+    'docs',
+    'Log',
     '.env.example',      # We include actual .env files (they have real config)
     'GAS'                # GAS is deployed to Google, not needed at runtime
 )

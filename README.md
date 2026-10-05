@@ -68,7 +68,10 @@ Setelah kontainer aktif:
 ├── docker-compose.yml       # Konfigurasi orkestrasi Docker multi-kontainer
 ├── start.bat                # Script peluncur otomatis untuk Windows
 ├── start.sh                 # Script peluncur otomatis untuk Linux/macOS
+├── bundle.ps1               # Script pembuat bundle deployment siap pakai
 ├── .env                     # Konfigurasi Google Sheets & Apps Script
+├── docs/                    # Dokumentasi arsitektur, log perubahan, dan rencana
+├── releases/                # File arsip bundle deployment (.zip)
 ├── web/                     # Frontend Vue 3 + Nginx
 │   ├── Dockerfile
 │   ├── nginx.conf
@@ -82,3 +85,4 @@ Setelah kontainer aktif:
 │   └── ppo/                 # Laporan progress, titik lokasi, FAQ
 └── GAS/                     # Source code Google Apps Script backend
 ```
+
