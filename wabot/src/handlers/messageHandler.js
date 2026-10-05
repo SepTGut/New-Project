@@ -31,6 +31,7 @@ const {
 } = require('../barcodeService');
 
 const logger = require('../logger');
+const lidService = require('../lidService');
 
 const {
   getDaftarGedung,
@@ -132,27 +133,15 @@ async function handleMessage(sock, msg) {
       return;
     }
 
-    // --- LID Resolution ---
-    // WhatsApp multi-device may use LID-based JIDs (@lid) instead of phone JIDs (@s.whatsapp.net).
-    // We resolve the real phone JID so auth lookup works correctly.
-    if (from.endsWith('@lid')) {
-      // Try to resolve from Baileys store (sock.store)
-      const resolved = sock.store?.contacts?.[from]?.lid
-        ? null  // lid field is itself a lid, skip
-        : sock.store?.contacts?.[from]?.jid || null;
-      if (resolved && resolved.endsWith('@s.whatsapp.net')) {
-        from = resolved;
-      } else if (msg.key.participant && !msg.key.participant.endsWith('@lid')) {
-        from = msg.key.participant;
-      }
-      // If still unresolved, from remains as LID — auth will fail gracefully (guest)
-    }
+    // --- WhatsApp Multi-Device LID to Phone Resolution ---
+    const rawFrom = from;
+    const senderInfo = lidService.resolveSender(rawFrom);
+    from = senderInfo.resolvedJid; // Use resolved phone JID for user identity, lookup, and permissions
 
     const messageContent = msg.message;
     if (!messageContent) return;
 
-    // DEBUG: log raw JID to diagnose LID vs phone issues (remove after fix confirmed)
-    logger.info('DEBUG_JID', `remoteJid=${msg.key.remoteJid} | resolved_from=${from} | pushName=${msg.pushName}`);
+    logger.info('AUTH_JID', `remoteJid=${rawFrom} | resolvedPhone=+${senderInfo.phone} | isLid=${senderInfo.isLid} | isResolved=${senderInfo.isResolved} | pushName=${msg.pushName || '-'}`);
 
     let text = '';
     const hasImage = !!messageContent.imageMessage;
@@ -174,13 +163,14 @@ async function handleMessage(sock, msg) {
     // Log incoming message to terminal
     logger.incoming(senderPhone, senderName, msgType, text);
 
-    // Transparently wrap sock.sendMessage to log all replies with latency
+    // Transparently wrap sock.sendMessage to route replies to active chat window with latency logging
     const origSend = sock.sendMessage;
     const loggedSock = Object.create(sock);
     loggedSock.sendMessage = async (target, content, options) => {
-      const res = await origSend.call(sock, target, content, options);
+      const actualTarget = (target === from && rawFrom !== from) ? rawFrom : target;
+      const res = await origSend.call(sock, actualTarget, content, options);
       const preview = content.text || content.caption || (content.image ? '[Foto Terkirim]' : '[Media]');
-      logger.reply(formatPhone(target), preview, Date.now() - startTime);
+      logger.reply(formatPhone(actualTarget), preview, Date.now() - startTime);
       return res;
     };
     sock = loggedSock;
@@ -190,8 +180,8 @@ async function handleMessage(sock, msg) {
     const cmd = parts[0].toLowerCase();
     const args = parts.slice(1);
 
-    // Active auth session
-    let session = sessions.get(from);
+    // Active auth session (check resolved phone JID or raw originating JID)
+    let session = sessions.get(from) || sessions.get(rawFrom);
 
     // Auto-login by Phone Number:
     // If user is not yet logged in, check if their WhatsApp phone number is registered in Google Sheets
@@ -208,6 +198,9 @@ async function handleMessage(sock, msg) {
             loggedInAt: new Date()
           };
           sessions.set(from, session);
+          if (rawFrom !== from) {
+            sessions.set(rawFrom, session);
+          }
           logger.info('AUTH', `Auto-login berhasil untuk ${session.name} (${session.username} - ${session.role}) dari nomor ${formatPhone(from)}`);
         }
       } catch (e) {
@@ -216,11 +209,12 @@ async function handleMessage(sock, msg) {
     }
 
     // Active PPO report session
-    const ppoSession = ppoSessions.get(from);
+    const ppoSession = ppoSessions.get(from) || ppoSessions.get(rawFrom);
 
-    // Unregistered phone number greeting prompt (shown once per session)
-    if (!session && !guestPromptedSet.has(from) && !['login', 'batal'].includes(cmd) && !ppoSession) {
+    // Unregistered phone number greeting prompt (shown once per session run)
+    if (!session && !guestPromptedSet.has(from) && !guestPromptedSet.has(rawFrom) && !['login', 'batal'].includes(cmd) && !ppoSession) {
       guestPromptedSet.add(from);
+      guestPromptedSet.add(rawFrom);
       await sock.sendMessage(from, {
         text: `👋 *Halo!* Nomor WhatsApp Anda (*${formatPhone(from)}*) belum terdaftar di sistem gudang.\n\n` +
               `ℹ️ Anda dapat mencari stok (\`!cek\`) dan melihat panduan (\`!menu\`), namun untuk otorisasi perubahan data stok (\`!opname\`), silakan hubungi Admin atau login manual dengan:\n` +
@@ -939,20 +933,34 @@ Ketik \`!lapor\` untuk mengisi laporan baru lainnya.`;
 
       const authRes = await verifyLogin(username, password);
       if (authRes.success && authRes.user) {
-        sessions.set(from, {
-          username: authRes.user.username,
-          name: authRes.user.name || authRes.user.username,
-          role: authRes.user.role || 'User',
-          loggedInAt: new Date()
-        });
+        const uObj = authRes.user;
+        const targetPhone = uObj.phone || (uObj.role === 'Admin' ? (process.env.ADMIN_NOTIFY_NUMBER || '6282139540559') : '');
 
+        session = {
+          username: uObj.username,
+          name: uObj.name || uObj.username,
+          role: uObj.role || 'User',
+          phone: targetPhone || normalizePhone(from),
+          loggedInAt: new Date()
+        };
+        sessions.set(from, session);
+        if (rawFrom !== from) {
+          sessions.set(rawFrom, session);
+        }
+
+        // If user logged in from a Multi-Device @lid, auto-learn mapping permanently
+        if (rawFrom.endsWith('@lid') && targetPhone) {
+          lidService.setMapping(rawFrom, targetPhone, uObj.username);
+        }
+
+        const displayPhone = targetPhone ? `+${normalizePhone(targetPhone)}` : formatPhone(from);
         const successText =
 `✅ *LOGIN BERHASIL!*
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Selamat datang, *${authRes.user.name}*!
-• Username: *${authRes.user.username}*
-• Hak Akses: *${authRes.user.role}*
-• Nomor WA: *${formatPhone(from)}*
+Selamat datang, *${uObj.name || uObj.username}*!
+• Username: *${uObj.username}*
+• Hak Akses: *${uObj.role}*
+• Nomor WA: *${displayPhone}*
 
 Nomor Anda kini telah memiliki otorisasi untuk melakukan *!opname* dan perubahan stok gudang.`;
 
@@ -969,9 +977,11 @@ Nomor Anda kini telah memiliki otorisasi untuk melakukan *!opname* dan perubahan
     // 6. Logout: !logout
     // =========================================================================
     if (cmd === 'logout') {
-      if (sessions.has(from)) {
-        const u = sessions.get(from).name;
+      if (sessions.has(from) || sessions.has(rawFrom)) {
+        const s = sessions.get(from) || sessions.get(rawFrom);
+        const u = s?.name || 'Petugas';
         sessions.delete(from);
+        sessions.delete(rawFrom);
         await sock.sendMessage(from, {
           text: `🔒 *Sesi Berakhir:* Petugas *${u}* telah keluar. Anda kini berstatus sebagai Tamu.\n_Catatan: Jika nomor Anda terdaftar di sistem, pesan berikutnya akan otomatis login kembali._`
         }, { quoted: msg });

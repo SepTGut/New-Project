@@ -29,6 +29,9 @@ const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL ||
 const DATABASE_CSV_URL = process.env.DATABASE_CSV_URL ||
   'https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/gviz/tq?tqx=out:csv&sheet=Opname';
 
+const USER_SHEET_CSV_URL = process.env.USER_SHEET_CSV_URL ||
+  'https://docs.google.com/spreadsheets/d/1_HvmBaEqFpOCBPXJuI4eMbhsKIDe5RhOrHo7h2kqt2c/gviz/tq?tqx=out:csv&sheet=User';
+
 // In-memory cache for CSV inventory to ensure instant responses
 let cachedItems = [];
 let lastCacheTime = 0;
@@ -36,10 +39,10 @@ const CACHE_TTL_MS = 25000; // 25 seconds
 
 // Standard fallback credentials (matches Google Sheets User tab)
 const LOCAL_ACCOUNTS = [
-  { username: 'admin',    pass: 'admin123', name: 'System Administrator',        role: 'Admin' },
-  { username: 'user1',   pass: 'user123',  name: 'Warehouse Operator',           role: 'User'  },
-  { username: 'staff',   pass: 'staff123', name: 'Warehouse Staff',              role: 'User'  },
-  { username: 'iit_lead', pass: 'iit2026!', name: 'IT Support & Systems (Hidden)', role: 'IIT'  }
+  { username: 'admin',    pass: 'admin123', name: 'System Administrator',        role: 'Admin', phone: process.env.ADMIN_NOTIFY_NUMBER || '6282139540559' },
+  { username: 'user1',   pass: 'user123',  name: 'Warehouse Operator',           role: 'User',  phone: '' },
+  { username: 'staff',   pass: 'staff123', name: 'Warehouse Staff',              role: 'User',  phone: '' },
+  { username: 'iit_lead', pass: 'iit2026!', name: 'IT Support & Systems (Hidden)', role: 'IIT',   phone: '' }
 ];
 
 // In-memory cache for downloaded image buffers to ensure lightning-fast WhatsApp replies
@@ -427,23 +430,26 @@ let lastPhoneCacheTime = 0;
 const PHONE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
- * Refreshes phone number mappings from Google Apps Script
+ * Refreshes phone number mappings from Google Apps Script with published CSV fallback
  */
 async function refreshPhoneCache(force = false) {
   if (!force && cachedPhoneMappings.size > 0 && (Date.now() - lastPhoneCacheTime) < PHONE_CACHE_TTL_MS) {
     return cachedPhoneMappings;
   }
 
+  const newMap = new Map();
+
+  // 1. Try Google Apps Script API with JSON payload & redirect following
   try {
-    const res = await httpClient.post(APPS_SCRIPT_URL, {
+    const res = await httpClient.post(APPS_SCRIPT_URL, JSON.stringify({
       action: 'get_all_phone_users'
-    }, {
+    }), {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      maxRedirects: 5,
       timeout: 7000
     });
 
-    if (res.data && res.data.success && Array.isArray(res.data.list)) {
-      const newMap = new Map();
+    if (res.data && res.data.success && Array.isArray(res.data.list) && res.data.list.length > 0) {
       for (const item of res.data.list) {
         const cleanP = normalizePhone(item.phone);
         if (cleanP) {
@@ -457,12 +463,84 @@ async function refreshPhoneCache(force = false) {
           });
         }
       }
-      cachedPhoneMappings = newMap;
-      lastPhoneCacheTime = Date.now();
-      return cachedPhoneMappings;
     }
   } catch (err) {
-    // Silently continue if GAS request fails
+    // Continue to CSV fallback
+  }
+
+  // 2. Fallback: Parse Google Sheets User Tab CSV directly if GAS API failed or was empty
+  if (newMap.size === 0 && USER_SHEET_CSV_URL) {
+    try {
+      const csvRes = await httpClient.get(USER_SHEET_CSV_URL, { timeout: 6000 });
+      if (csvRes.data) {
+        const lines = csvRes.data.split(/\r?\n/).filter(line => line.trim().length > 0);
+        if (lines.length > 1) {
+          const parseRow = (line) => {
+            const result = [];
+            let cur = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              if (char === '"' || char === "'") {
+                inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                result.push(cur.trim());
+                cur = '';
+              } else {
+                cur += char;
+              }
+            }
+            result.push(cur.trim());
+            return result;
+          };
+
+          const headers = parseRow(lines[0]).map(h => h.replace(/^["']|["']$/g, '').trim().toLowerCase());
+          const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('nomor') || h.includes('telepon') || h.includes('no hp'));
+          const userIdx = headers.findIndex(h => h === 'username' || h.includes('user'));
+          const nameIdx = headers.findIndex(h => h.includes('nama'));
+          const roleIdx = headers.findIndex(h => h.includes('role'));
+          const emailIdx = headers.findIndex(h => h.includes('email'));
+          const statusIdx = headers.findIndex(h => h.includes('status'));
+
+          if (phoneIdx !== -1 && userIdx !== -1) {
+            for (let i = 1; i < lines.length; i++) {
+              const cols = parseRow(lines[i]).map(c => c.replace(/^["']|["']$/g, '').trim());
+              const rawPhone = cols[phoneIdx];
+              const cleanP = normalizePhone(rawPhone);
+              if (cleanP) {
+                const uname = cols[userIdx] || 'user';
+                newMap.set(cleanP, {
+                  phone: cleanP,
+                  username: uname,
+                  name: (nameIdx !== -1 ? cols[nameIdx] : '') || uname,
+                  role: (roleIdx !== -1 ? cols[roleIdx] : '') || 'User',
+                  email: emailIdx !== -1 ? cols[emailIdx] : '',
+                  status: statusIdx !== -1 ? cols[statusIdx] : 'Active'
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (csvErr) {}
+  }
+
+  // 3. Guarantee Admin phone mapping if configured in environment
+  const adminPhone = normalizePhone(process.env.ADMIN_NOTIFY_NUMBER || '6282139540559');
+  if (adminPhone && !newMap.has(adminPhone)) {
+    newMap.set(adminPhone, {
+      phone: adminPhone,
+      username: 'admin',
+      name: 'System Administrator',
+      role: 'Admin',
+      email: 'admin@gudang.local',
+      status: 'Active'
+    });
+  }
+
+  if (newMap.size > 0) {
+    cachedPhoneMappings = newMap;
+    lastPhoneCacheTime = Date.now();
   }
 
   return cachedPhoneMappings;
@@ -491,11 +569,12 @@ async function getUserByPhone(phoneNumber) {
 
   // 2. Direct online check against Apps Script
   try {
-    const res = await httpClient.post(APPS_SCRIPT_URL, {
+    const res = await httpClient.post(APPS_SCRIPT_URL, JSON.stringify({
       action: 'get_user_by_phone',
       phone: cleanPhone
-    }, {
+    }), {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      maxRedirects: 5,
       timeout: 6000
     });
 
@@ -522,12 +601,13 @@ async function addPhoneToUser(username, phoneNumber) {
   }
 
   try {
-    const res = await httpClient.post(APPS_SCRIPT_URL, {
+    const res = await httpClient.post(APPS_SCRIPT_URL, JSON.stringify({
       action: 'add_phone',
       username: u,
       phone: p
-    }, {
+    }), {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      maxRedirects: 5,
       timeout: 8000
     });
 
@@ -555,11 +635,12 @@ async function removePhone(phoneNumber) {
   }
 
   try {
-    const res = await httpClient.post(APPS_SCRIPT_URL, {
+    const res = await httpClient.post(APPS_SCRIPT_URL, JSON.stringify({
       action: 'remove_phone',
       phone: p
-    }, {
+    }), {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      maxRedirects: 5,
       timeout: 8000
     });
 

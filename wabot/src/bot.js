@@ -17,6 +17,7 @@ const fs = require('fs');
 const axios = require('axios');
 const http = require('http');
 const { handleMessage } = require('./handlers/messageHandler');
+const lidService = require('./lidService');
 const logger = require('./logger');
 
 // Admin WhatsApp JID to notify when server starts (set ADMIN_NOTIFY_NUMBER=628xxx in .env)
@@ -100,6 +101,9 @@ async function startBot() {
       fs.mkdirSync(AUTH_FOLDER, { recursive: true });
     }
 
+    // Initialize LID resolution service with current auth storage folder
+    lidService.initLidService(AUTH_FOLDER);
+
     botState.status = 'connecting';
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
@@ -178,6 +182,14 @@ async function startBot() {
         // Notify admin with the tunnel URL after startup (non-blocking)
         notifyAdminOnStartup(sock).catch(() => {});
       }
+    });
+
+    // Sync contact updates to resolve Multi-Device @lid identifiers to phone numbers
+    sock.ev.on('contacts.upsert', (contacts) => {
+      lidService.handleContacts(contacts);
+    });
+    sock.ev.on('contacts.update', (updates) => {
+      lidService.handleContacts(updates);
     });
 
     // Incoming messages
