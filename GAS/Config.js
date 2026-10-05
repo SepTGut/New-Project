@@ -53,6 +53,9 @@ const CONFIG = {
   get TOTAL_COLS() {
     return 10;
   },
+  get LOCK_TIMEOUT_MS() {
+    return Number(getEnv('LOCK_TIMEOUT_MS', 30000)) || 30000;
+  },
 
   // Column definitions for Opname (10 columns)
   COL: {

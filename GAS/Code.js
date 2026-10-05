@@ -10,8 +10,6 @@ function onOpen() {
     .addItem('🏷️ Cetak Kartu Material (4/A4)', 'openSingleCardDialog')
     .addItem('🪪 Cetak QR Login Pengguna (User QR)', 'openUserQRDialog')
     .addSeparator()
-    .addItem('📥 Salin Data dari Sheet Sumber (64 Item)', 'importFromSourceSheet')
-    .addSeparator()
     .addItem('🧹 Rapikan Format Sheet (Fix Format)', 'fixFormat')
     .addItem('🔄 Sinkronisasi No & Link Foto', 'syncNoAndLinks')
     .addItem('📋 Inisialisasi Sheet Log', 'setupLogSheetWrapper')
@@ -51,7 +49,7 @@ function setupUsersSheetWrapper() {
  */
 function setupLogSheetWrapper() {
   const ss = getSpreadsheetInstance();
-  setupLogSheet(ss);
+  setupLogSheet(ss, true);
   SpreadsheetApp.getUi().alert('Sukses', 'Sheet Log berhasil diinisialisasi!', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
@@ -63,7 +61,7 @@ function setupLogSheetWrapper() {
 function appendLogEntry(ss, entry) {
   try {
     if (!ss) ss = getSpreadsheetInstance();
-    const logSheet = setupLogSheet(ss);
+    const logSheet = setupLogSheet(ss, false);
     const now = new Date();
     const timestampStr = Utilities.formatDate(now, 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss');
 
@@ -105,94 +103,14 @@ function appendLogEntry(ss, entry) {
 
 /**
  * Imports/copies all material items from external source spreadsheet into Opname
+ * (DEACTIVATED: Initial data copy is complete. Deactivated to protect active Masuk/Keluar and Log audit trail)
  */
 function importFromSourceSheet() {
-  const ui = SpreadsheetApp.getUi();
-  const confirm = ui.alert(
-    'Konfirmasi Salin Data',
-    'Apakah Anda ingin menyalin seluruh data material dari sheet sumber (64 item)?\n\n' +
-    'Sheet Target: "' + CONFIG.SHEET_OPNAME + '"\n' +
-    'Sheet Sumber: https://docs.google.com/spreadsheets/d/1SyeWtAjKAFyDs8oDVxKhiQluF45JjB_Se79PjmfrQxQ',
-    ui.ButtonSet.OK_CANCEL
+  SpreadsheetApp.getUi().alert(
+    'Fungsi Dinonaktifkan ⚠️',
+    'Fungsi penyalinan dari sheet sumber telah dinonaktifkan secara permanen untuk melindungi data mutasi Masuk, Keluar, dan riwayat Log yang sedang aktif.',
+    SpreadsheetApp.getUi().ButtonSet.OK
   );
-
-  if (confirm !== ui.Button.OK) return;
-
-  try {
-    const ss = getSpreadsheetInstance();
-    const sheet = getMasterSheet(ss);
-    if (!sheet) {
-      ui.alert('Error', 'Sheet "' + CONFIG.SHEET_OPNAME + '" tidak ditemukan.', ui.ButtonSet.OK);
-      return;
-    }
-
-    const sourceUrl = 'https://docs.google.com/spreadsheets/d/1SyeWtAjKAFyDs8oDVxKhiQluF45JjB_Se79PjmfrQxQ/export?format=csv&gid=0';
-    const resp = UrlFetchApp.fetch(sourceUrl, { muteHttpExceptions: true });
-    if (resp.getResponseCode() !== 200) {
-      ui.alert('Gagal Mengambil Data', 'Gagal mengakses sheet sumber (HTTP ' + resp.getResponseCode() + ').', ui.ButtonSet.OK);
-      return;
-    }
-
-    const csvText = resp.getContentText();
-    const rows = Utilities.parseCsv(csvText);
-    if (!rows || rows.length <= 1) {
-      ui.alert('Peringatan', 'Tidak ada baris data yang ditemukan pada sheet sumber.', ui.ButtonSet.OK);
-      return;
-    }
-
-    const dataRows = rows.slice(1);
-    const rowsToInsert = [];
-
-    for (let i = 0; i < dataRows.length; i++) {
-      const r = dataRows[i];
-      const no = i + 1;
-      const lokasi = (r[0] || '').trim();
-      const rawKode = (r[1] || '').trim();
-      const kode = (rawKode && rawKode !== '-') ? rawKode : ('ITEM-' + (i + 1));
-      const nama = (r[2] || '').trim();
-      const qty = (r[3] || '').trim();
-      const uom = (r[4] || '').trim();
-      const deskripsi = (r[5] || '').trim();
-      const link1 = (r[6] || '').trim();
-      const link2 = (r[7] || '').trim();
-      const linkGabungan = (r[8] || '').trim();
-      const photo = linkGabungan || link1 || link2;
-
-      rowsToInsert.push([
-        no,
-        lokasi,
-        kode,
-        nama,
-        0, // Masuk (initial 0)
-        0, // Keluar (initial 0)
-        qty ? (isNaN(Number(qty)) ? qty : Number(qty)) : 0, // Qty
-        uom,
-        deskripsi,
-        photo ? '=HYPERLINK("' + photo + '"; "Link")' : ''
-      ]);
-    }
-
-    // Clear old data rows if any
-    const lastRow = sheet.getLastRow();
-    const totalCols = CONFIG.TOTAL_COLS || 10;
-    if (lastRow >= CONFIG.DATA_START_ROW) {
-      sheet.getRange(CONFIG.DATA_START_ROW, 1, lastRow - CONFIG.DATA_START_ROW + 1, totalCols).clearContent();
-    }
-
-    // Write all items
-    sheet.getRange(CONFIG.DATA_START_ROW, 1, rowsToInsert.length, totalCols).setValues(rowsToInsert);
-
-    // Standardize formatting and sequential styling
-    fixFormat();
-
-    ui.alert(
-      'Impor Sukses! 🎉',
-      'Berhasil menyalin ' + rowsToInsert.length + ' item material ke sheet "' + sheet.getName() + '".',
-      ui.ButtonSet.OK
-    );
-  } catch (err) {
-    ui.alert('Gagal Menyalin Data', 'Terjadi kesalahan: ' + err.message, ui.ButtonSet.OK);
-  }
 }
 
 // ==============================================================================
@@ -407,186 +325,188 @@ function handleApiRequest(e) {
         return jsonResponse({ success: false, error: 'Jumlah stok (qty) atau foto material wajib disertakan.' });
       }
 
-      const ss = getSpreadsheetInstance();
-      const sheet = getMasterSheet(ss);
-      if (!sheet) {
-        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
-      }
-      const lastRow = sheet.getLastRow();
-      if (lastRow < CONFIG.DATA_START_ROW) {
-        return jsonResponse({ success: false, error: 'Data material kosong.' });
+      const lock = LockService.getScriptLock();
+      try {
+        lock.waitLock(CONFIG.LOCK_TIMEOUT_MS || 30000);
+      } catch (lockErr) {
+        return jsonResponse({ success: false, error: 'Sistem sedang sibuk memproses transaksi lain, silakan ulangi beberapa detik lagi.' });
       }
 
-      const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
-      const totalCols = CONFIG.TOTAL_COLS || 10;
-      const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
-      const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
-
-      for (let i = 0; i < values.length; i++) {
-        const row = values[i];
-        const k = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
-        const noVal = String(row[CONFIG.COL.NO - 1] || (i + 1)).trim();
-
-        const matchesCode = k.toLowerCase() === code;
-        const matchesItemNo = code === ('item-' + noVal).toLowerCase() || code === ('item' + noVal).toLowerCase();
-
-        if (matchesCode || matchesItemNo) {
-          const targetRow = CONFIG.DATA_START_ROW + i;
-          const oldQty = Number(row[CONFIG.COL.QTY - 1]) || 0;
-          const currentMasuk = Number(row[CONFIG.COL.MASUK - 1]) || 0;
-          const currentKeluar = Number(row[CONFIG.COL.KELUAR - 1]) || 0;
-
-          let newQty = oldQty;
-          let delta = 0;
-          let isDelta = false;
-          let clamped = false;
-          let isPhotoOnly = false;
-          let tipe = 'TETAP';
-          let changeAmount = 0;
-          let newMasuk = currentMasuk;
-          let newKeluar = currentKeluar;
-
-          if (rawQty === null || rawQty === '') {
-            // Photo-only update
-            isPhotoOnly = true;
-            tipe = 'FOTO_UPDATE';
-          } else if (rawQty.startsWith('+') || rawQty.startsWith('-')) {
-            isDelta = true;
-            delta = Number(rawQty);
-            if (isNaN(delta)) {
-              return jsonResponse({ success: false, error: 'Format penambahan/pengurangan stok tidak valid: ' + rawQty });
-            }
-            newQty = oldQty + delta;
-            if (newQty < 0) {
-              newQty = 0;
-              clamped = true;
-            }
-            delta = newQty - oldQty;
-          } else {
-            // Absolute quantity set
-            newQty = Number(rawQty);
-            if (isNaN(newQty) || newQty < 0) {
-              return jsonResponse({ success: false, error: 'Jumlah stok fisik harus berupa angka valid (>= 0).' });
-            }
-            delta = newQty - oldQty;
-          }
-
-          const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '-').trim();
-          const rak = String(row[CONFIG.COL.LOKASI_RAK - 1] || '-').trim();
-          const uom = String(row[CONFIG.COL.UOM - 1] || 'PCS').trim();
-
-          // Update Qty and accumulate Masuk/Keluar if not photo-only
-          if (!isPhotoOnly) {
-            sheet.getRange(targetRow, CONFIG.COL.QTY).setValue(newQty);
-
-            if (delta > 0) {
-              tipe = 'MASUK';
-              changeAmount = delta;
-              newMasuk = currentMasuk + delta;
-              sheet.getRange(targetRow, CONFIG.COL.MASUK).setValue(newMasuk);
-              appendLogEntry(ss, {
-                kode: k,
-                nama: nama,
-                rak: rak,
-                tipe: 'MASUK',
-                jumlah: delta,
-                oldQty: oldQty,
-                newQty: newQty,
-                uom: uom,
-                user: user
-              });
-            } else if (delta < 0) {
-              tipe = 'KELUAR';
-              changeAmount = Math.abs(delta);
-              newKeluar = currentKeluar + changeAmount;
-              sheet.getRange(targetRow, CONFIG.COL.KELUAR).setValue(newKeluar);
-              appendLogEntry(ss, {
-                kode: k,
-                nama: nama,
-                rak: rak,
-                tipe: 'KELUAR',
-                jumlah: changeAmount,
-                oldQty: oldQty,
-                newQty: newQty,
-                uom: uom,
-                user: user
-              });
-            }
-          }
-
-          // Handle photo upload if provided
-          let photoUpdated = false;
-          let photoUrl = '';
-          let photoSlot = 1;
-          let finalFormulaOrLink = '';
-
-          if (b64) {
-            const oldFormula = formulas[i][0] || '';
-            const oldLinkVal = String(row[CONFIG.COL.LINK_FOTO - 1] || '').trim();
-            const existingLinks = extractHyperlinks(oldFormula || oldLinkVal);
-
-            if (existingLinks.length === 0) {
-              photoSlot = 1;
-              photoUrl = saveBase64ImageToDrive(b64, k + '_foto1');
-              if (photoUrl) {
-                finalFormulaOrLink = '=HYPERLINK("' + photoUrl + '"; "Foto 1")';
-                photoUpdated = true;
-              }
-            } else if (existingLinks.length === 1) {
-              photoSlot = 2;
-              photoUrl = saveBase64ImageToDrive(b64, k + '_foto2');
-              if (photoUrl) {
-                finalFormulaOrLink = '=HYPERLINK("' + existingLinks[0] + '"; "Foto 1") & ", " & HYPERLINK("' + photoUrl + '"; "Foto 2")';
-                photoUpdated = true;
-              }
-            } else {
-              photoSlot = 2;
-              photoUrl = saveBase64ImageToDrive(b64, k + '_foto2');
-              if (photoUrl) {
-                finalFormulaOrLink = '=HYPERLINK("' + existingLinks[0] + '"; "Foto 1") & ", " & HYPERLINK("' + photoUrl + '"; "Foto 2")';
-                photoUpdated = true;
-              }
-            }
-
-            if (photoUpdated && finalFormulaOrLink) {
-              const fotoCell = sheet.getRange(targetRow, CONFIG.COL.LINK_FOTO);
-              if (finalFormulaOrLink.startsWith('=')) {
-                fotoCell.setFormula(finalFormulaOrLink);
-              } else {
-                fotoCell.setValue(finalFormulaOrLink);
-              }
-            }
-          }
-
-          const fileId = photoUrl ? extractDriveFileId(photoUrl) : extractDriveFileId(row[CONFIG.COL.LINK_FOTO - 1] || formulas[i][0]);
-
-          return jsonResponse({
-            success: true,
-            kodeMaterial: k,
-            namaBarang: nama,
-            lokasiRak: rak,
-            tipe: tipe,
-            jumlah: changeAmount,
-            totalMasuk: newMasuk,
-            totalKeluar: newKeluar,
-            oldQty: oldQty,
-            newQty: newQty,
-            delta: delta,
-            isDelta: isDelta,
-            clamped: clamped,
-            isPhotoOnly: isPhotoOnly,
-            photoUpdated: photoUpdated,
-            photoSlot: photoSlot,
-            photoUrl: photoUrl,
-            fileId: fileId,
-            imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : '',
-            uom: uom,
-            updatedBy: user,
-            timestamp: new Date().toISOString()
-          });
+      try {
+        const ss = getSpreadsheetInstance();
+        const sheet = getMasterSheet(ss);
+        if (!sheet) {
+          return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
         }
+        const lastRow = sheet.getLastRow();
+        if (lastRow < CONFIG.DATA_START_ROW) {
+          return jsonResponse({ success: false, error: 'Data material kosong.' });
+        }
+
+        const numRows = lastRow - CONFIG.DATA_START_ROW + 1;
+        const totalCols = CONFIG.TOTAL_COLS || 10;
+        const values = sheet.getRange(CONFIG.DATA_START_ROW, 1, numRows, totalCols).getValues();
+        const formulas = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.LINK_FOTO, numRows, 1).getFormulas();
+
+        for (let i = 0; i < values.length; i++) {
+          const row = values[i];
+          const k = String(row[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
+          const noVal = String(row[CONFIG.COL.NO - 1] || (i + 1)).trim();
+
+          const matchesCode = k.toLowerCase() === code;
+          const matchesItemNo = code === ('item-' + noVal).toLowerCase() || code === ('item' + noVal).toLowerCase();
+
+          if (matchesCode || matchesItemNo) {
+            const targetRow = CONFIG.DATA_START_ROW + i;
+            const oldQty = Number(row[CONFIG.COL.QTY - 1]) || 0;
+            const currentMasuk = Number(row[CONFIG.COL.MASUK - 1]) || 0;
+            const currentKeluar = Number(row[CONFIG.COL.KELUAR - 1]) || 0;
+
+            let newQty = oldQty;
+            let delta = 0;
+            let isDelta = false;
+            let clamped = false;
+            let isPhotoOnly = false;
+            let tipe = 'TETAP';
+            let changeAmount = 0;
+            let newMasuk = currentMasuk;
+            let newKeluar = currentKeluar;
+
+            if (rawQty === null || rawQty === '') {
+              // Photo-only update
+              isPhotoOnly = true;
+              tipe = 'FOTO_UPDATE';
+            } else if (rawQty.startsWith('+') || rawQty.startsWith('-')) {
+              isDelta = true;
+              delta = Number(rawQty);
+              if (isNaN(delta)) {
+                return jsonResponse({ success: false, error: 'Format penambahan/pengurangan stok tidak valid: ' + rawQty });
+              }
+              newQty = oldQty + delta;
+              if (newQty < 0) {
+                newQty = 0;
+                clamped = true;
+              }
+              delta = newQty - oldQty;
+            } else {
+              // Absolute quantity set
+              newQty = Number(rawQty);
+              if (isNaN(newQty) || newQty < 0) {
+                return jsonResponse({ success: false, error: 'Jumlah stok fisik harus berupa angka valid (>= 0).' });
+              }
+              delta = newQty - oldQty;
+            }
+
+            const nama = String(row[CONFIG.COL.NAMA_BARANG - 1] || '-').trim();
+            const rak = String(row[CONFIG.COL.LOKASI_RAK - 1] || '-').trim();
+            const uom = String(row[CONFIG.COL.UOM - 1] || 'PCS').trim();
+
+            // Update Qty and accumulate Masuk/Keluar atomically if not photo-only
+            if (!isPhotoOnly) {
+              if (delta > 0) {
+                tipe = 'MASUK';
+                changeAmount = delta;
+                newMasuk = currentMasuk + delta;
+              } else if (delta < 0) {
+                tipe = 'KELUAR';
+                changeAmount = Math.abs(delta);
+                newKeluar = currentKeluar + changeAmount;
+              }
+
+              // Contiguous atomic write of [Masuk, Keluar, Qty] (Cols 5, 6, 7)
+              sheet.getRange(targetRow, CONFIG.COL.MASUK, 1, 3).setValues([[newMasuk, newKeluar, newQty]]);
+
+              if (delta !== 0) {
+                appendLogEntry(ss, {
+                  kode: k,
+                  nama: nama,
+                  rak: rak,
+                  tipe: tipe,
+                  jumlah: changeAmount,
+                  oldQty: oldQty,
+                  newQty: newQty,
+                  uom: uom,
+                  user: user
+                });
+              }
+            }
+
+            // Handle photo upload if provided
+            let photoUpdated = false;
+            let photoUrl = '';
+            let photoSlot = 1;
+            let finalFormulaOrLink = '';
+
+            if (b64) {
+              const oldFormula = formulas[i][0] || '';
+              const oldLinkVal = String(row[CONFIG.COL.LINK_FOTO - 1] || '').trim();
+              const existingLinks = extractHyperlinks(oldFormula || oldLinkVal);
+
+              if (existingLinks.length === 0) {
+                photoSlot = 1;
+                photoUrl = saveBase64ImageToDrive(b64, k + '_foto1');
+                if (photoUrl) {
+                  finalFormulaOrLink = '=HYPERLINK("' + photoUrl + '"; "Foto 1")';
+                  photoUpdated = true;
+                }
+              } else if (existingLinks.length === 1) {
+                photoSlot = 2;
+                photoUrl = saveBase64ImageToDrive(b64, k + '_foto2');
+                if (photoUrl) {
+                  finalFormulaOrLink = '=HYPERLINK("' + existingLinks[0] + '"; "Foto 1") & ", " & HYPERLINK("' + photoUrl + '"; "Foto 2")';
+                  photoUpdated = true;
+                }
+              } else {
+                photoSlot = 2;
+                photoUrl = saveBase64ImageToDrive(b64, k + '_foto2');
+                if (photoUrl) {
+                  finalFormulaOrLink = '=HYPERLINK("' + existingLinks[0] + '"; "Foto 1") & ", " & HYPERLINK("' + photoUrl + '"; "Foto 2")';
+                  photoUpdated = true;
+                }
+              }
+
+              if (photoUpdated && finalFormulaOrLink) {
+                const fotoCell = sheet.getRange(targetRow, CONFIG.COL.LINK_FOTO);
+                if (finalFormulaOrLink.startsWith('=')) {
+                  fotoCell.setFormula(finalFormulaOrLink);
+                } else {
+                  fotoCell.setValue(finalFormulaOrLink);
+                }
+              }
+            }
+
+            const fileId = photoUrl ? extractDriveFileId(photoUrl) : extractDriveFileId(row[CONFIG.COL.LINK_FOTO - 1] || formulas[i][0]);
+
+            return jsonResponse({
+              success: true,
+              kodeMaterial: k,
+              namaBarang: nama,
+              lokasiRak: rak,
+              tipe: tipe,
+              jumlah: changeAmount,
+              totalMasuk: newMasuk,
+              totalKeluar: newKeluar,
+              oldQty: oldQty,
+              newQty: newQty,
+              delta: delta,
+              isDelta: isDelta,
+              clamped: clamped,
+              isPhotoOnly: isPhotoOnly,
+              photoUpdated: photoUpdated,
+              photoSlot: photoSlot,
+              photoUrl: photoUrl,
+              fileId: fileId,
+              imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : '',
+              uom: uom,
+              updatedBy: user,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+        return jsonResponse({ success: false, error: 'Kode material "' + code + '" tidak ditemukan di database.' });
+      } finally {
+        try { lock.releaseLock(); } catch (le) {}
       }
-      return jsonResponse({ success: false, error: 'Kode material "' + code + '" tidak ditemukan di database.' });
     }
 
     if (action === 'inventory' || action === 'getinventory') {
@@ -670,105 +590,116 @@ function handleApiRequest(e) {
         return jsonResponse({ success: false, error: 'Kode material dan nama barang wajib diisi.' });
       }
 
-      const ss = getSpreadsheetInstance();
-      const sheet = getMasterSheet(ss);
-      if (!sheet) {
-        return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
+      const lock = LockService.getScriptLock();
+      try {
+        lock.waitLock(CONFIG.LOCK_TIMEOUT_MS || 30000);
+      } catch (lockErr) {
+        return jsonResponse({ success: false, error: 'Sistem sedang sibuk memproses transaksi lain, silakan ulangi beberapa detik lagi.' });
       }
-      const lastRow = sheet.getLastRow();
 
-      // Check if code already exists
-      if (lastRow >= CONFIG.DATA_START_ROW) {
-        const existingCodes = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.KODE_MATERIAL, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
-        for (let i = 0; i < existingCodes.length; i++) {
-          if (String(existingCodes[i][0] || '').trim().toLowerCase() === kode.toLowerCase()) {
-            return jsonResponse({
-              success: false,
-              error: 'Kode material "' + kode + '" sudah ada. Gunakan !opname untuk mengubah stok.'
-            });
+      try {
+        const ss = getSpreadsheetInstance();
+        const sheet = getMasterSheet(ss);
+        if (!sheet) {
+          return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
+        }
+        const lastRow = sheet.getLastRow();
+
+        // Check if code already exists
+        if (lastRow >= CONFIG.DATA_START_ROW) {
+          const existingCodes = sheet.getRange(CONFIG.DATA_START_ROW, CONFIG.COL.KODE_MATERIAL, lastRow - CONFIG.DATA_START_ROW + 1, 1).getValues();
+          for (let i = 0; i < existingCodes.length; i++) {
+            if (String(existingCodes[i][0] || '').trim().toLowerCase() === kode.toLowerCase()) {
+              return jsonResponse({
+                success: false,
+                error: 'Kode material "' + kode + '" sudah ada. Gunakan !opname untuk mengubah stok.'
+              });
+            }
           }
         }
-      }
 
-      const targetRow = Math.max(lastRow + 1, CONFIG.DATA_START_ROW);
-      const nextNo = targetRow - CONFIG.DATA_START_ROW + 1;
+        const targetRow = Math.max(lastRow + 1, CONFIG.DATA_START_ROW);
+        const nextNo = targetRow - CONFIG.DATA_START_ROW + 1;
 
-      // Save photos to Google Drive if uploaded
-      let url1 = '';
-      let url2 = '';
-      const b64_1 = extractBase64(params.foto1);
-      if (b64_1) {
-        url1 = saveBase64ImageToDrive(b64_1, kode + '_foto1');
-      }
-      const b64_2 = extractBase64(params.foto2);
-      if (b64_2) {
-        url2 = saveBase64ImageToDrive(b64_2, kode + '_foto2');
-      }
-
-      let linkFormula = '';
-      if (url1 && url2) {
-        linkFormula = '=HYPERLINK("' + url1 + '"; "Foto 1") & ", " & HYPERLINK("' + url2 + '"; "Foto 2")';
-      } else if (url1) {
-        linkFormula = '=HYPERLINK("' + url1 + '"; "Foto 1")';
-      } else if (url2) {
-        linkFormula = '=HYPERLINK("' + url2 + '"; "Foto 2")';
-      } else {
-        const driveImgUrl = findDriveImageUrlByCode(kode);
-        if (driveImgUrl) {
-          linkFormula = '=HYPERLINK("' + driveImgUrl + '"; "Lihat Foto")';
+        // Save photos to Google Drive if uploaded
+        let url1 = '';
+        let url2 = '';
+        const b64_1 = extractBase64(params.foto1);
+        if (b64_1) {
+          url1 = saveBase64ImageToDrive(b64_1, kode + '_foto1');
         }
-      }
+        const b64_2 = extractBase64(params.foto2);
+        if (b64_2) {
+          url2 = saveBase64ImageToDrive(b64_2, kode + '_foto2');
+        }
 
-      const totalCols = CONFIG.TOTAL_COLS || 10;
-      sheet.getRange(targetRow, 1, 1, totalCols).setValues([[
-        nextNo,
-        rak || '-',
-        kode,
-        nama,
-        qty, // Initial Masuk
-        0,   // Initial Keluar
-        qty, // Qty
-        uom,
-        deskripsi,
-        linkFormula || '-'
-      ]]);
+        let linkFormula = '';
+        if (url1 && url2) {
+          linkFormula = '=HYPERLINK("' + url1 + '"; "Foto 1") & ", " & HYPERLINK("' + url2 + '"; "Foto 2")';
+        } else if (url1) {
+          linkFormula = '=HYPERLINK("' + url1 + '"; "Foto 1")';
+        } else if (url2) {
+          linkFormula = '=HYPERLINK("' + url2 + '"; "Foto 2")';
+        } else {
+          const driveImgUrl = findDriveImageUrlByCode(kode);
+          if (driveImgUrl) {
+            linkFormula = '=HYPERLINK("' + driveImgUrl + '"; "Lihat Foto")';
+          }
+        }
 
-      // Record to Log sheet
-      appendLogEntry(ss, {
-        kode: kode,
-        nama: nama,
-        rak: rak,
-        tipe: 'MASUK',
-        jumlah: qty,
-        oldQty: 0,
-        newQty: qty,
-        uom: uom,
-        user: user
-      });
+        const totalCols = CONFIG.TOTAL_COLS || 10;
+        sheet.getRange(targetRow, 1, 1, totalCols).setValues([[
+          nextNo,
+          rak || '-',
+          kode,
+          nama,
+          qty, // Initial Masuk
+          0,   // Initial Keluar
+          qty, // Qty
+          uom,
+          deskripsi,
+          linkFormula || '-'
+        ]]);
 
-      fixFormat();
-
-      const fileId = extractDriveFileId(linkFormula);
-      return jsonResponse({
-        success: true,
-        message: 'Item material "' + kode + '" berhasil ditambahkan!',
-        item: {
-          no: nextNo,
-          lokasiRak: rak || '-',
-          kodeMaterial: kode,
-          namaBarang: nama,
-          masuk: qty,
-          keluar: 0,
-          qty: qty,
+        // Record to Log sheet
+        appendLogEntry(ss, {
+          kode: kode,
+          nama: nama,
+          rak: rak,
+          tipe: 'MASUK',
+          jumlah: qty,
+          oldQty: 0,
+          newQty: qty,
           uom: uom,
-          deskripsi: deskripsi,
-          linkFoto: linkFormula,
-          fileId: fileId,
-          imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : ''
-        },
-        createdBy: user,
-        timestamp: new Date().toISOString()
-      });
+          user: user
+        });
+
+        fixFormat();
+
+        const fileId = extractDriveFileId(linkFormula);
+        return jsonResponse({
+          success: true,
+          message: 'Item material "' + kode + '" berhasil ditambahkan!',
+          item: {
+            no: nextNo,
+            lokasiRak: rak || '-',
+            kodeMaterial: kode,
+            namaBarang: nama,
+            masuk: qty,
+            keluar: 0,
+            qty: qty,
+            uom: uom,
+            deskripsi: deskripsi,
+            linkFoto: linkFormula,
+            fileId: fileId,
+            imageUrl: fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : ''
+          },
+          createdBy: user,
+          timestamp: new Date().toISOString()
+        });
+      } finally {
+        try { lock.releaseLock(); } catch (le) {}
+      }
     }
 
     if (action === 'update') {
@@ -785,8 +716,16 @@ function handleApiRequest(e) {
         return jsonResponse({ success: false, error: 'Kode material dan nama barang wajib diisi.' });
       }
 
-      const ss = getSpreadsheetInstance();
-      const sheet = getMasterSheet(ss);
+      const lock = LockService.getScriptLock();
+      try {
+        lock.waitLock(CONFIG.LOCK_TIMEOUT_MS || 30000);
+      } catch (lockErr) {
+        return jsonResponse({ success: false, error: 'Sistem sedang sibuk memproses transaksi lain, silakan ulangi beberapa detik lagi.' });
+      }
+
+      try {
+        const ss = getSpreadsheetInstance();
+        const sheet = getMasterSheet(ss);
       if (!sheet) {
         return jsonResponse({ success: false, error: 'Sheet ' + CONFIG.SHEET_OPNAME + ' tidak ditemukan.' });
       }
@@ -889,19 +828,14 @@ function handleApiRequest(e) {
       const currentMasuk = Number(oldRowData[CONFIG.COL.MASUK - 1]) || 0;
       const currentKeluar = Number(oldRowData[CONFIG.COL.KELUAR - 1]) || 0;
 
-      sheet.getRange(targetRowIndex, CONFIG.COL.LOKASI_RAK).setValue(newRak || '-');
-      sheet.getRange(targetRowIndex, CONFIG.COL.KODE_MATERIAL).setValue(newKode);
-      sheet.getRange(targetRowIndex, CONFIG.COL.NAMA_BARANG).setValue(newNama);
-      sheet.getRange(targetRowIndex, CONFIG.COL.QTY).setValue(targetQty);
-      sheet.getRange(targetRowIndex, CONFIG.COL.UOM).setValue(newUom || 'PCS');
-      sheet.getRange(targetRowIndex, CONFIG.COL.DESKRIPSI).setValue(newDesk || '-');
+      let newMasuk = currentMasuk;
+      let newKeluar = currentKeluar;
 
       // If Qty changed in update, accumulate and log
       if (targetQty !== oldQty) {
         const delta = targetQty - oldQty;
         if (delta > 0) {
-          const newMasuk = currentMasuk + delta;
-          sheet.getRange(targetRowIndex, CONFIG.COL.MASUK).setValue(newMasuk);
+          newMasuk = currentMasuk + delta;
           appendLogEntry(ss, {
             kode: newKode,
             nama: newNama,
@@ -915,8 +849,7 @@ function handleApiRequest(e) {
           });
         } else {
           const qtyKeluar = Math.abs(delta);
-          const newKeluar = currentKeluar + qtyKeluar;
-          sheet.getRange(targetRowIndex, CONFIG.COL.KELUAR).setValue(newKeluar);
+          newKeluar = currentKeluar + qtyKeluar;
           appendLogEntry(ss, {
             kode: newKode,
             nama: newNama,
@@ -930,6 +863,14 @@ function handleApiRequest(e) {
           });
         }
       }
+
+      sheet.getRange(targetRowIndex, CONFIG.COL.LOKASI_RAK).setValue(newRak || '-');
+      sheet.getRange(targetRowIndex, CONFIG.COL.KODE_MATERIAL).setValue(newKode);
+      sheet.getRange(targetRowIndex, CONFIG.COL.NAMA_BARANG).setValue(newNama);
+      // Contiguous atomic write of [Masuk, Keluar, Qty] (Cols 5, 6, 7)
+      sheet.getRange(targetRowIndex, CONFIG.COL.MASUK, 1, 3).setValues([[newMasuk, newKeluar, targetQty]]);
+      sheet.getRange(targetRowIndex, CONFIG.COL.UOM).setValue(newUom || 'PCS');
+      sheet.getRange(targetRowIndex, CONFIG.COL.DESKRIPSI).setValue(newDesk || '-');
 
       const fotoCell = sheet.getRange(targetRowIndex, CONFIG.COL.LINK_FOTO);
       if (finalFormulaOrLink.startsWith('=')) {
@@ -960,6 +901,9 @@ function handleApiRequest(e) {
         updatedBy: user,
         timestamp: new Date().toISOString()
       });
+      } finally {
+        try { lock.releaseLock(); } catch (le) {}
+      }
     }
 
     // Default action: Run full system sync, repair headers, numbering, and user formulas

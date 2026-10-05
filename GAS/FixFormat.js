@@ -162,11 +162,21 @@ function fixFormat() {
 /**
  * Ensures Log sheet exists and has standardized headers, typography, and frozen header row
  */
-function setupLogSheet(ss) {
+function setupLogSheet(ss, force) {
   if (!ss) ss = getSpreadsheetInstance();
   let logSheet = ss.getSheetByName(CONFIG.SHEET_LOG);
+  let isNew = false;
   if (!logSheet) {
     logSheet = ss.insertSheet(CONFIG.SHEET_LOG);
+    isNew = true;
+  }
+
+  // Fast check: if already initialized and not forced, return immediately
+  if (!isNew && !force) {
+    const checkVal = logSheet.getRange(1, 1).getValue();
+    if (String(checkVal).trim().toLowerCase() === 'timestamp') {
+      return logSheet;
+    }
   }
 
   const logHeaders = [

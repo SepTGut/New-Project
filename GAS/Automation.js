@@ -107,48 +107,58 @@ function handleOpnameEdit(e, sheet) {
     // 4. Manual Edit Safeguard: If Qty column is edited directly in spreadsheet, log and accumulate
     if (startCol <= CONFIG.COL.QTY && endCol >= CONFIG.COL.QTY && numRows === 1 && numCols === 1) {
       const editRow = effectiveStart;
-      const oldVal = e.oldValue !== undefined ? Number(e.oldValue) : null;
-      const newVal = e.value !== undefined ? Number(e.value) : Number(sheet.getRange(editRow, CONFIG.COL.QTY).getValue());
+      const oldVal = (e.oldValue !== undefined && e.oldValue !== null && e.oldValue !== '') ? Number(e.oldValue) : 0;
+      const newVal = (e.value !== undefined && e.value !== null && e.value !== '') ? Number(e.value) : Number(sheet.getRange(editRow, CONFIG.COL.QTY).getValue());
 
-      if (oldVal !== null && !isNaN(oldVal) && !isNaN(newVal) && oldVal !== newVal) {
-        const rowData = sheet.getRange(editRow, 1, 1, totalCols).getValues()[0];
-        const kode = String(rowData[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
-        const nama = String(rowData[CONFIG.COL.NAMA_BARANG - 1] || '-').trim();
-        const rak = String(rowData[CONFIG.COL.LOKASI_RAK - 1] || '-').trim();
-        const uom = String(rowData[CONFIG.COL.UOM - 1] || 'PCS').trim();
-        const curMasuk = Number(rowData[CONFIG.COL.MASUK - 1]) || 0;
-        const curKeluar = Number(rowData[CONFIG.COL.KELUAR - 1]) || 0;
+      if (!isNaN(oldVal) && !isNaN(newVal) && oldVal !== newVal) {
+        const lock = LockService.getScriptLock();
+        try {
+          lock.waitLock(10000);
+        } catch (le) {
+          // Continue if lock cannot be acquired within 10s
+        }
 
-        const delta = newVal - oldVal;
-        const ss = sheet.getParent();
+        try {
+          const rowData = sheet.getRange(editRow, 1, 1, totalCols).getValues()[0];
+          const kode = String(rowData[CONFIG.COL.KODE_MATERIAL - 1] || '').trim();
+          const nama = String(rowData[CONFIG.COL.NAMA_BARANG - 1] || '-').trim();
+          const rak = String(rowData[CONFIG.COL.LOKASI_RAK - 1] || '-').trim();
+          const uom = String(rowData[CONFIG.COL.UOM - 1] || 'PCS').trim();
+          const curMasuk = Number(rowData[CONFIG.COL.MASUK - 1]) || 0;
+          const curKeluar = Number(rowData[CONFIG.COL.KELUAR - 1]) || 0;
 
-        if (delta > 0) {
-          sheet.getRange(editRow, CONFIG.COL.MASUK).setValue(curMasuk + delta);
+          const delta = newVal - oldVal;
+          const ss = sheet.getParent();
+
+          let newMasuk = curMasuk;
+          let newKeluar = curKeluar;
+          let tipe = 'MASUK';
+          let changeAmount = delta;
+
+          if (delta > 0) {
+            newMasuk = curMasuk + delta;
+          } else {
+            tipe = 'KELUAR';
+            changeAmount = Math.abs(delta);
+            newKeluar = curKeluar + changeAmount;
+          }
+
+          // Atomic batch write of [Masuk, Keluar, Qty] (Cols 5, 6, 7)
+          sheet.getRange(editRow, CONFIG.COL.MASUK, 1, 3).setValues([[newMasuk, newKeluar, newVal]]);
+
           appendLogEntry(ss, {
             kode: kode,
             nama: nama,
             rak: rak,
-            tipe: 'MASUK',
-            jumlah: delta,
+            tipe: tipe,
+            jumlah: changeAmount,
             oldQty: oldVal,
             newQty: newVal,
             uom: uom,
             user: 'Manual Edit (Spreadsheet)'
           });
-        } else if (delta < 0) {
-          const qtyKeluar = Math.abs(delta);
-          sheet.getRange(editRow, CONFIG.COL.KELUAR).setValue(curKeluar + qtyKeluar);
-          appendLogEntry(ss, {
-            kode: kode,
-            nama: nama,
-            rak: rak,
-            tipe: 'KELUAR',
-            jumlah: qtyKeluar,
-            oldQty: oldVal,
-            newQty: newVal,
-            uom: uom,
-            user: 'Manual Edit (Spreadsheet)'
-          });
+        } finally {
+          try { lock.releaseLock(); } catch (lErr) {}
         }
       }
     }
